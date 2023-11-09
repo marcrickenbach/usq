@@ -1,3 +1,11 @@
+/**********************************************************************************
+ * Note: This is a hold over from previous project. This isn't compiled. Just here
+ * for reference. 
+ * 
+ *
+*/
+
+
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <assert.h>
