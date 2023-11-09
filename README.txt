@@ -15,5 +15,8 @@ Time potentiometer. When that timer is up, we send the sequencer channel gate
 high (GPIO), send the current voltage information to the DAC peripheral for a
 control voltage output, and write to the LED driver over SPI.
 
+
+** see docs/docs.txt for more detailed documentation 
+
 Previous iteration demo:
 https://www.instagram.com/reel/CuARqAMAVtb/?utm_source=ig_web_copy_link&igshid=MzRlODBiNWFlZA==

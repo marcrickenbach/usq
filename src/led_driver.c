@@ -540,7 +540,7 @@ static void state_deinit_run(void * o)
     struct smf_ctx * p_sm = o;
     struct LED_Driver_Instance * p_inst = sm_ctx_to_instance(p_sm);
 
-    /* Get the event. */
+    /* Get the eve nt. */
     struct LED_Driver_SM_Evt * p_evt = &p_inst->sm_evt;
 
     /* TODO */
