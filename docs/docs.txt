@@ -100,7 +100,7 @@
 |
 |
 |   GENERAL NOTES:
-|       - Barebones, as code stands, gates are firing every ~190 to 250 us. Bit of jitter? 
+|       - Barebones, as code stands, gates are firing every ~180 to 250 us. Bit of jitter? 
 |       - switched to jlink debugger, have that up and running on the nucleo board. 
 |
 |
