@@ -4,6 +4,14 @@
 
 /* *****************************************************************************
  * TODO
+
+    Implement Filter on ADC readings. They're currently all over the place and 
+    cause pot_change broadcast event to over-fire, resulting in crashes down
+    the line. 
+
+    Abstract more. Right now this module is somewhat cemented in the mux config
+    for my project. Biggest sticking point for me at the moment is how to account
+    for various mux pins, particularly in the mux adv function. 
  */
 
 /* *****************************************************************************
