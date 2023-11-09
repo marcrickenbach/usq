@@ -1,0 +1,110 @@
+///////////////////////////////////////
+// Sequencer Thread
+///////////////////////////////////////
+|
+|   FUNCTION:   Application Layer: oversees threads below. 
+|               Controls two hw timers that are declared in instance.h within timer struct
+|               When pots change, values internal to thread get updated by way of public pot change listener callback.
+|               TODO: When button press (in button thread) occurs, set new step active values for appropriate channel and alert UI. 
+|               When Channel x/y interrupt occurs, message gets sent to sequencer queue to handle respective channel events. 
+|                   -- event Timer X/Y up: we set dac value via public api, set channel gate (just toggles a gpio), send message to UI thread for LEDs.
+|                   -- Sequencer sends MIDI information to UART Thread. Note: this isn't working yet, I think it has something to do with the nucleo board device tree, but am not certain.
+|               On receiving a pot change event from the Pot module, we post new value to the instance struct keeping track of all our sequencer data. 
+|               I've also sketched up a function that would check to see if any of the pots are associated with a currently active step, in which case we would take care of new dac and gate messages. 
+|
+|   NOTES:
+|               note: seq struct to instance that holds all of both channels information. 
+|               note: included pot.h in sequencer evt.h 
+|               TODO: Handle any mode changes, e.g. can set two sequencers anywhere from 16:0 / 0:16 steps. (save this for later)
+|               TODO: Would any quantizing happen somewhere in this thread before going to DAC? (save this for later)
+|               ?   : Do we handle processing of MIDI data in sequencer thread or in the UART thread? 
+|
+|
+|	///////////////////////////////////////
+| - // DAC Thread			
+|	///////////////////////////////////////	
+|	
+|	    FUNCTION:   Sets DAC Value via public API.
+|	                This is called by sequencer thread when timer is up (only on rising edge). 
+|	
+|       NOTES:      note: the setup portion of this module is somewhat abstracted, taking into account potential of multiple channels and configuration structs.
+|
+|
+|	///////////////////////////////////////		
+| -	// Pot Thread				
+|	///////////////////////////////////////		
+|
+|	    FUNCTION:   (1), Does an ADC conversion at regular intervals set by k_timer.
+|                       -- k_timer on expiry sends a conversion event for state machine to handle.
+|                   TODO: (2), filters ADC conversion values.
+|                   (3) Then, sets the next MUX address for next reading.
+|                   (4), Checks to see if the current pot value has changed since the last reading, if so, broadcasts pot ID and new value to listeners.
+|	
+|       NOTES:      note: Listener & callback is defined in main.c. On a pot change, we put a message in the sequencer queue with a Sequencer_Evt.
+|                   note: edited pot id.h with descriptive names for all pots. 
+|                   ?   : Having issues with the listener callback. I enter the broadcast() function, but the code blocks when it tries to call the callback.
+|                         looks like callback isn't being passed along to broadcast()? Might also be that since we're not filtered yet, almost every reading fires a pot_changed event,
+|                         so there appear to be some overflow then an assertion failure down the line.
+|
+|
+|   ///////////////////////////////////////
+| -	// LED Driver Thread
+|	///////////////////////////////////////
+|
+|       FUNCTION:   (1) Handles LED driver via SPI.
+|                       When sequencer is ready to write, the sequencer thread broadcasts to its listener that is listening for a write ready signal.  
+|                       When the sequencer listener hears this signal, it calls a fn in main (on_led_write_ready) that posts a SM event to the LED_Driver thread. 
+|                       Event sends along (16 bit?)
+|
+|       NOTES:      note: need some check to see if we clear everything and write, or just add to what's existing.
+|                         The idea is to have dimly lit LEDs for all active channels on both sequencer channels
+|                         Brightness will be high on current step.
+|                         As we'll be handling two sequences, we don't want to overwrite everything each time.
+|   
+|
+|
+|   ///////////////////////////////////////
+| -	// UART Thread
+|	///////////////////////////////////////
+|       FUNCTION:   Sequencer sends an event to UART thread.
+|                   Send functions will be called from State Machine state. 
+|                   TODO: handle RX events to send back to Sequencer [?]
+|                   
+|       NOTES:      ?   : currently, all midi calculations are done in UART thread. Does it make more sense to handle all those calcs in Sequencer thread?
+|                   note: Listener and callback are defined in main which tranlsates the public event into a thread specific SM event, then queues that.
+|
+|
+|
+|
+|   TODO:
+|
+| -	///////////////////////////////////////
+|	// GPIO Thread
+|	///////////////////////////////////////
+|   Handles all GPIO inits. 
+|   Handles external GPIO interrupts (Play/Pause & Reset)
+|   Does this need it's own thread or would sequencer handle this? 
+|
+|
+|	///////////////////////////////////////
+| -	// Button Thread
+|	///////////////////////////////////////
+|   Handles all button events. 
+|   We have 16 led-buttons to handle here. 
+|   Will need a debounce. 
+|   Set up a listener to look for button presses (these are less time critical than play/pause interrupts)
+|       -- similar to pot thread: if a button press occurs:
+|           -- Send message to sequencer thread to change sequencer active step value accordingly.
+|   TODO: need to genericize. Will need to be similar to Pot thread as we'll be mux'ing here as well. 
+|
+|
+|
+|   GENERAL NOTES:
+|       - switched to jlink debugger, have that up and running on the nucleo board. 
+|
+|
+|   GENERAL QUESTIONS:
+|       - Generally curious about best practices for storing data within objects (i.e. seq data in Sequencer)
+|       - What does genericizing the Pot module look like, especially with a MUX in the mix?
+|       - In on_led_write_ready (main.c : 191), I'm unclear on correclty passing information from one event struct to another. What I have now seems to work, but is this correct?
+|

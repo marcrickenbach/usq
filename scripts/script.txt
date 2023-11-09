@@ -1,0 +1,10 @@
+
+// Pristine Build 
+west build -p always -b nucleo_f446re
+
+// Flash using jlink
+west flash -r jlink
+
+// Launch JLink GBD server; after this run debugger in vscode
+JLinkGDBServer -device STM32F446RE -if SWD -speed 4000
+

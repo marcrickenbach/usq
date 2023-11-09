@@ -1,0 +1,9 @@
+description: FKMG USQ PC-1 Device Tree Definition
+
+compatible: "fkmg,usq"
+
+properties:
+  gen-gpios:
+    type: phandle-array
+    required: false
+    description: Handles all GPIOs for USQ PC-1 App

@@ -1,0 +1,58 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Rebuild usq",
+			"type": "shell",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"command": "west",
+			"args": [
+				"build"
+			],
+			"problemMatcher": [
+				"$gcc"
+			],
+		},
+		{
+			"label": "Pristine build usq",
+			"type": "shell",
+			"group": {
+				"kind": "build",
+			},
+			"command": "west",
+			"args": [
+				"build",
+				"-p",
+				"-b",
+				"${input:board}",
+				"--",
+				"-DCMAKE_BUILD_TYPE=${input:build}",
+				"-DCONF_FILE=prj_${input:build}.conf"
+			],
+			"problemMatcher": [
+				"$gcc"
+			],
+		},
+	],
+	"inputs": [
+		{
+			"id": "board",
+			"type": "promptString",
+			"default": "nucleo_f446re",
+			"description": "See https://docs.zephyrproject.org/latest/boards/index.html"
+		},
+		{
+			"id": "build",
+			"type": "pickString",
+			"options": [
+				"debug",
+				"release"
+			],
+			"default": "debug",
+			"description": "Build type"
+		}
+	]
+}

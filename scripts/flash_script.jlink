@@ -1,0 +1,9 @@
+si SWD
+device STM32F446RE
+speed 4000
+r
+h
+loadfile /Users/marcrickenbach/usq/build/zephyr/zephyr.hex
+r
+g
+q

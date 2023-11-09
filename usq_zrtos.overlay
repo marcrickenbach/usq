@@ -1,0 +1,186 @@
+/* USQ_ZRTOS OVERLAY */
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/spi/spi.h>
+#include <dt-bindings/timer/stm32-timer.h>
+
+
+
+/{
+    zephyr,user {
+
+        gate-high-gpios     =   <&gpioc 10 GPIO_ACTIVE_HIGH>;
+        gate-low-gpios      =   <&gpioa 15 GPIO_ACTIVE_HIGH>;
+
+        led-17-gpios        =   <&gpioc 11 GPIO_ACTIVE_HIGH>;
+        led-18-gpios        =   <&gpioc 12 GPIO_ACTIVE_HIGH>;
+        led-19-gpios        =   <&gpiod 2 GPIO_ACTIVE_HIGH>;
+        led-20-gpios        =   <&gpiob 3 GPIO_ACTIVE_HIGH>;
+        led-21-gpios        =   <&gpiob 4 GPIO_ACTIVE_HIGH>;
+        
+        adc-addr-0-gpios    =   <&gpiob 0 GPIO_ACTIVE_HIGH>;
+        adc-addr-1-gpios    =   <&gpiob 1 GPIO_ACTIVE_HIGH>;
+        adc-addr-2-gpios    =   <&gpiob 2 GPIO_ACTIVE_HIGH>;
+
+        adc-addr-bank-0-gpios = <&gpioc 4 GPIO_ACTIVE_LOW>;
+        adc-addr-bank-1-gpios = <&gpioc 5 GPIO_ACTIVE_LOW>;
+        adc-addr-bank-2-gpios = <&gpioc 6 GPIO_ACTIVE_LOW>;
+        adc-addr-bank-3-gpios = <&gpioc 7 GPIO_ACTIVE_LOW>;
+        adc-addr-bank-4-gpios = <&gpioc 8 GPIO_ACTIVE_LOW>;
+
+        sw-addr-0-gpios     =   <&gpioa 0 GPIO_ACTIVE_HIGH>;
+        sw-addr-1-gpios     =   <&gpioc 3 GPIO_ACTIVE_HIGH>;
+        sw-addr-2-gpios     =   <&gpioc 2 GPIO_ACTIVE_HIGH>;
+
+        sw-addr-bank-0-gpios =  <&gpioc 0 GPIO_ACTIVE_LOW>;
+        sw-addr-bank-1-gpios =  <&gpioc 1 GPIO_ACTIVE_LOW>;
+
+        pp-trigger-high-gpios = <&gpiob 6 GPIO_PULL_DOWN>;
+        rst-trigger-high-gpios = <&gpiob 7 GPIO_PULL_DOWN>;
+        pp-trigger-low-gpios = <&gpiob 9 GPIO_PULL_DOWN>;
+        rst-trigger-low-gpios = <&gpiob 8 GPIO_PULL_DOWN>;
+
+        mode-global-gpios = <&gpiob 5 GPIO_PULL_DOWN>;
+    };
+
+    chosen {
+        // zephyr,console = &usart1;
+        // zephyr,shell-uart = &usart1; 
+    };
+
+};
+
+
+&clk_hse {
+	/delete-property/ hse-bypass;
+};
+
+&pll {
+	div-m = <4>;
+	mul-n = <180>;
+	div-p = <2>;
+	div-q = <8>;
+	clocks = <&clk_hse>;
+	status = "okay";
+};
+
+&rcc {
+	clocks = <&pll>;
+	clock-frequency = <DT_FREQ_M(180)>;
+	ahb-prescaler = <1>;
+	apb1-prescaler = <4>;
+	apb2-prescaler = <2>;
+};
+
+
+&adc1 {
+    pinctrl-0 = <&adc1_in7_pa7>;  
+    pinctrl-names = "default";
+    status = "okay";  
+};
+
+&dac1 {
+    pinctrl-0 = <&dac_out1_pa4 &dac_out2_pa5>;  
+    pinctrl-names = "default";
+    status = "okay";  
+};
+
+&can1 {
+    status = "disabled";
+};
+
+&can2 {
+    status = "disabled";
+};
+
+&spi1 {
+    status = "disabled";
+};
+
+
+&spi2 {
+    compatible = "st,stm32-spi";
+    status = "disabled"; 
+    cs-gpios = < &gpiob 12 GPIO_ACTIVE_LOW >;
+    pinctrl-0 = <&spi2_mosi_pb15 &spi2_nss_pb12 &spi2_sck_pb13>;
+    pinctrl-names = "default";
+    clock-frequency = <5625000>;
+    label = "SPI2";
+    spidev: spi-dev@0 {
+        compatible = "zephyr,spi-dev";
+        reg = <0>;
+    };
+};
+
+&i2c1 {
+    status = "disabled";
+};
+
+&i2c2 {
+    status = "disabled";
+};
+
+&i2c3 {
+    status = "disabled";
+};
+
+&i2s2 {
+    status = "disabled";
+};
+
+&usbotg_fs {
+    pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
+    pinctrl-names = "default";
+    status = "okay"; 
+};
+
+&usart1 {
+    compatible = "st,stm32-uart";
+    pinctrl-0 = <&usart1_rx_pa10 &usart1_tx_pa9>;
+    pinctrl-names = "default";
+    status = "okay"; 
+};
+
+
+
+&dma1 {
+    status="okay";
+};
+
+
+&usart2 {
+    // status = "disabled";
+};
+
+&timers1 {
+    status = "okay"; 
+    led_pwm: pwm {
+        compatible = "st,stm32-pwm";
+        status = "okay";
+        pinctrl-0 = <&tim1_ch1_pa8>;
+        pinctrl-names = "default";
+        #pwm-cells = <3>;
+    };
+};
+
+&timers2 {
+    status = "okay";
+    st,prescaler = <9599>;
+    st,countermode = <0>; 
+    compatible = "st,stm32-timers";
+    counter_timer1: counter {
+        compatible = "st,stm32-counter";
+        status = "okay";
+    };
+};
+
+&timers3 {
+    status = "okay";
+    st,prescaler = <9599>;
+    st,countermode = <0>;
+    compatible = "st,stm32-timers";
+    counter_timer2: counter {
+        compatible = "st,stm32-counter";
+        status = "okay";
+    };
+};
