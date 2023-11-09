@@ -81,6 +81,11 @@ struct Sequencer_Instance{
         uint8_t last_note[2];
     }midi;
 
+        /* offset in following struct tells us where sequencer channel 2 begins. 
+           don't use maxStep since once a sequencer's total possible steps is set,
+           user still has possibility to deactivate, say, sequencer 1 steps and probably
+           doesn't want sequencer two shifted up. 
+        */
     struct{
         uint8_t step[2];
         uint8_t minStep[2];
@@ -92,7 +97,7 @@ struct Sequencer_Instance{
         uint16_t delay_buffer[2]; 
         bool edge[2]; 
         uint16_t global; 
-        uint8_t offset; // tells us where sequencer channel 2 begins
+        uint8_t offset; 
     }seq; 
 
     counter_alarm_callback_t tim_cb[2];

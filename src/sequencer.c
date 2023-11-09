@@ -115,10 +115,6 @@ static struct Sequencer_Instance * sm_ctx_to_instance(struct smf_ctx * p_sm_ctx)
     return(NULL);
 }
 
-// static enum Sequencer_Id next_seq_channel(enum Sequencer_Id id)
-// {
-//     return((id + 1) % k_Seq_Id_Cnt);
-// }
 
 static enum Sequencer_Step_Id next_step(struct Sequencer_Instance * p_inst, enum Sequencer_Step_Id id)
 {
@@ -142,32 +138,29 @@ static void reset_timer(struct Sequencer_Instance * p_inst,
     };  
 }
 
+/* 
+ * Most work here only gets done on a rising edge, i.e. the on part of the gate. 
+ * The on-time is calculated as half the time delay between when this rising edge hits and the next gate. 
+ * The delay_buffer variable in the instance is to keep track of this delay so we only have to calculate it once,
+ * unless one of an active channel's pots sends a pot_change event, in which case we will recalculate the new delay time. 
+*/ 
+
 static uint16_t calculate_gate_timer_delay(struct Sequencer_Instance * p_inst, enum Sequencer_Id id, bool edge) 
 {
-    /* when we enter this function, we first need to check to see if we're on a rising or a falling edge */ 
+
     uint16_t delay_val; 
 
     if (!edge) {
-        /* read the next time value of this particular channel */
         delay_val = p_inst->seq.time[next_step(&p_inst, id)]; 
-
-        /* once we have that value, we divide it by two */
         delay_val = delay_val >> 1; 
-            
-        /* set our edge information */
         p_inst->seq.edge[id] = true; 
-            
-        /* save value in delay buffer */
         p_inst->seq.delay_buffer[id] = delay_val; 
 
-        /* return value */
         return delay_val; 
     } 
 
     p_inst->seq.edge[id] = false; 
     return p_inst->seq.delay_buffer[id]; 
-
-    
 }
 
 /* **************
@@ -630,22 +623,28 @@ static void post_updated_pot_value(struct Sequencer_Instance * p_inst, enum Pot_
 }
 
 
+/*
+ * Gets called state machine after SM receives pot change event and posts new value to our instance. Main function is to decide whether or not
+ * we need to make any immediate changes to our voltage or timer values. If a step is currently active and outputting to the dac as the pot is changed,
+ * we'll want to reflect that in real time. As all voltages and time values are grouped together within the sequencer instance struct, 
+ * we need to identify which pot belongs to which sequencer, then whether that pot is a time value or voltage value. 
+*/
 
 static void check_current_step(struct Sequencer_Instance * p_inst, enum Pot_Id id) 
 {
-
     uint8_t ch;
     uint8_t stp; 
 
     switch (id) {
-
         case 32:
         case 33:
-            /* these pots deal with time scale, so if we detect a change here we'll have to update our timers as well */
+            /* these two pots deal with global time scale for each sequencer channel, 
+            so if we detect a change here we'll have to update our timers as well */
             return;
             break;
         case 34:
-            /* Some parameter, not quite sure what it does yet, might be clock divider. Only time will tell. */
+            /* Some parameter, not quite sure what it does yet, 
+            might be clock divider. Only time will tell. */
             return; 
             break; 
         default:  // default handles all time and voltage pots
@@ -705,9 +704,13 @@ static void set_gate_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
     if (result < 0) printk("Gate %d Error: %d\n", id, result);
 }
 
+/*
+ * TODO: does Sequencer thread keep only to sending messages in this case, or do we handle actual MIDI calcs here?
+ * Depends on whether or not uart module is uart in general or specifically a midi module? The latter might make more sense for
+ * my general purposes. In that case, only message that something happened goes to module. (any sync issues to be aware of?)
+*/
 static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
 {
-
     uint8_t midi_ch_base = p_inst->seq.edge[id] ? 0x80 : 0x90; 
     uint8_t midi_status_ch = midi_ch_base | id;
     uint8_t last_note = p_inst->midi.last_note[id];
@@ -728,6 +731,10 @@ static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
 
 }
 
+/*
+ * Tell UI module (here named led_driver) only which LED we need to hit high. The module itself will
+ * keep track of everything else that needs to stay dimmed and high from other calls (e.g. the other sequencer). 
+*/
 static void set_ui_on_step (struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
 {
     uint16_t ui_data = 0; 
