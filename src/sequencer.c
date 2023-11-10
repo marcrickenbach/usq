@@ -325,20 +325,22 @@ static void init_gate_gpios(struct Sequencer_Instance * p_inst)
     }
 }
 
-/* INITIAL VALUE CONFIGURATION */
+/* INITIAL VALUE CONFIGURATIONS */
+/* FIXME: Testing Only. Replace with an initial ADC read routine?*/
 static void config_initial_voltages(struct Sequencer_Instance * p_inst)
 {
     for (int i = 0; i < ARRAY_SIZE(p_inst->seq.voltage); ++i)
     {
-        p_inst->seq.voltage[i] = 500 + (i * 100);
+        p_inst->seq.voltage[i] = 0 + (i * 500);
     }
 }
 
+/* FIXME: Testing only. Replace with an initial ADC read routine? */
 static void config_initial_time_delays(struct Sequencer_Instance * p_inst)
 {
     for (int i = 0; i < ARRAY_SIZE(p_inst->seq.time); ++i)
     {
-        p_inst->seq.time[i] = 10 + (i * 100);
+        p_inst->seq.time[i] = 1 + (i * 10);
     }
 }
 
