@@ -86,10 +86,7 @@ static struct DAC_Instance * sm_ctx_to_instance(struct smf_ctx * p_sm_ctx)
     return(NULL);
 }
 
-// static enum DAC_Id next_channel(enum DAC_Id id)
-// {
-//     return((id + 1) % k_DAC_Id_Cnt);
-// }
+
 
 /* **************
  * Listener Utils
