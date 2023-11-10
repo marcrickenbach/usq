@@ -97,7 +97,9 @@
 |
 |
 |   GENERAL NOTES:
-|       - Barebones, as code stands, gates are firing every ~180 to 250 us. Substantial jitter. 
+|       - With test values (which would more or less be expected of normal use), both gates and dac voltages are looking steady.
+|       - Barebones, timers firing concurrently at inital 1000 ticks gates were running at, give or take, 4.6 kHz with fairly good jitter. 
+|           don't think it's an issue for my purposes here. 
 |       - Switched to jlink debugger, have that up and running on the nucleo board. 
 |
 |
