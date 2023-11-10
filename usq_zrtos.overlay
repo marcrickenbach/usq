@@ -3,7 +3,7 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/spi/spi.h>
 #include <dt-bindings/timer/stm32-timer.h>
-
+#include <dt-bindings/dma/stm32_dma.h>
 
 
 /{
@@ -43,13 +43,25 @@
         mode-global-gpios = <&gpiob 5 GPIO_PULL_DOWN>;
     };
 
-    chosen {
-        // zephyr,console = &usart1;
-        // zephyr,shell-uart = &usart1; 
-    };
 
 };
 
+&{/chosen} {
+
+};
+
+/**************************************** 
+ * Disable Nucleo pins for btn and led */
+
+&leds {
+    status = "disabled"; 
+};
+
+&user_button {
+    status = "disabled";
+};
+
+/**************************************/
 
 &clk_hse {
 	/delete-property/ hse-bypass;
@@ -79,11 +91,13 @@
     status = "okay";  
 };
 
+
 &dac1 {
     pinctrl-0 = <&dac_out1_pa4 &dac_out2_pa5>;  
     pinctrl-names = "default";
     status = "okay";  
 };
+
 
 &can1 {
     status = "disabled";
@@ -136,21 +150,21 @@
 
 &usart1 {
     compatible = "st,stm32-uart";
+    dmas = <&dma2 2 2 0x400 0x03>, <&dma2 2 7 0x400 0x03>;
+    dma-names = "tx", "rx";
     pinctrl-0 = <&usart1_rx_pa10 &usart1_tx_pa9>;
     pinctrl-names = "default";
+    current-speed = <31250>;
     status = "okay"; 
 };
 
 
-
-&dma1 {
+&dma2 {
+    compatible = "st,stm32-dma-v1";
     status="okay";
 };
 
 
-&usart2 {
-    // status = "disabled";
-};
 
 &timers1 {
     status = "okay"; 

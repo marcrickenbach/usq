@@ -4,6 +4,12 @@
 
 /* *****************************************************************************
  * TODO
+ *
+ *  Set MIDI transmission in the same way I would update values after a pot change.
+ *  I have the uart transmitting correctly, but there seems to be some timing issue
+ *  and eventual crash after some time. The rest of the program continues just fine
+ *  it seems, but transmission errs out. The error so far has been -EINVAL (-22)
+ *  that points to an 'invalid argument'. 
  */
 
 /* *****************************************************************************
@@ -16,6 +22,8 @@
 #include <zephyr/kernel.h>
 
 #include <zephyr/drivers/uart.h>
+#include <zephyr/drivers/dma.h>
+#include <zephyr/drivers/dma/dma_stm32.h>
 
 #include <assert.h>
 
@@ -34,7 +42,9 @@
 #define OVERRIDE    true
 #define NO_OVERRIDE false
 
-#define UART_NODE            DT_NODELABEL(usart1)
+#define UART_NODE   DT_NODELABEL(usart1)
+
+#define DMA2_NODE    DT_NODELABEL(dma2)
 
 /* *****************************************************************************
  * MIDI Specific Defines
@@ -65,13 +75,13 @@ static struct uart_module_data uart_md = {0};
 
 const struct device * uart_dev = DEVICE_DT_GET(UART_NODE); 
 
-struct MIDI_Package {
-    uint8_t status;
-    uint8_t note;
-    uint8_t velocity;
-}; 
+uint8_t midi_pkg[3] = {0}; 
 
 uint8_t rx_buf[10]; 
+
+const struct device * dma2_dev = DEVICE_DT_GET(DMA2_NODE); 
+
+
 
 /* *****************************************************************************
  * Private
@@ -182,12 +192,13 @@ static void config_instance_queues(
 
 /* Forward Declaration*/
 static void init_uart_device(struct UART_Instance * p_inst); 
+static void init_dma_device(struct UART_Instance * p_inst);
 
 static void config_instance_deferred(
         struct UART_Instance     * p_inst,
         struct UART_Instance_Cfg * p_cfg)
 {
-
+    init_dma_device(p_inst); 
     init_uart_device(p_inst);
 
 }
@@ -235,11 +246,58 @@ void uart_callback(const struct device *dev, struct uart_event *evt, void *user_
         case UART_RX_RDY:
 
             break;
+        case UART_TX_ABORTED:
+            printk("UART TX ABORTED\n");
+            break;
 
     }
 }
 
-static void init_uart_device(struct UART_Instance * p_inst) {
+
+static void init_dma_block(struct UART_Instance * p_inst)
+{
+
+}
+
+static void init_dma_device(struct UART_Instance * p_inst)
+{
+    int ret; 
+
+    struct dma_block_config dma_block_cfg = {
+        .block_size = 3,
+        .dest_address = (uint32_t)&USART1->DR,
+        .source_address = (uint32_t)midi_pkg
+    }; 
+
+    // Configure DMA 2 Stream 2 / RX
+    // struct dma_config dma__stream_2_cfg = { 
+    //     // .complete_callback_en = NULL,
+    //     .channel_direction = MEMORY_TO_PERIPHERAL,
+    //     .source_data_size = DMA_PDATAALIGN_BYTE,
+    //     // .cyclic = 1
+    // };
+
+    // ret = dma_config(dma2_dev, DMA_CHANNEL_2, &dma__stream_2_cfg); 
+    // __ASSERT(ret == 0, "Failed to configure DMA_2_Stream_2"); 
+
+
+    // Configure DMA 2 Stream 7 / TX
+    struct dma_config dma__stream_7_cfg = { 
+        .dma_slot = 7,
+        .channel_priority = 3,
+        .channel_direction = MEMORY_TO_PERIPHERAL,
+        .source_data_size = 1,
+        .dest_data_size = 1,
+        .head_block = &dma_block_cfg
+    };
+
+    ret = dma_config(dma2_dev, 7, &dma__stream_7_cfg); 
+    __ASSERT(ret == 0, "Failed to configure DMA_2_Stream_7"); 
+}
+
+
+static void init_uart_device(struct UART_Instance * p_inst) 
+{
     
     int err; 
 
@@ -247,7 +305,7 @@ static void init_uart_device(struct UART_Instance * p_inst) {
     __ASSERT(err == 1, "UART Device is not ready"); 
 
     struct uart_config cfg = {
-        .baudrate = 115200,
+        .baudrate = 31250,
         .parity = UART_CFG_PARITY_NONE,
         .stop_bits = UART_CFG_STOP_BITS_1,
         .data_bits = UART_CFG_DATA_BITS_8,
@@ -287,14 +345,18 @@ static float get_midi_scaled_voltage(uint16_t raw_voltage)
 }
 
 
-static struct MIDI_Package create_midi_package(uint8_t status, 
-                                        uint16_t raw_voltage, 
-                                        uint8_t lnote, 
-                                        uint8_t ctrl) 
+static void create_midi_package(struct UART_Instance * p_inst,
+                                uint8_t status, 
+                                uint16_t raw_voltage, 
+                                uint8_t lnote, 
+                                uint8_t ctrl) 
 {
-    struct MIDI_Package midi;
-    midi.status = status; 
-    midi.velocity = ctrl; 
+
+    int id = p_inst->id; 
+
+    midi_pkg[0] = status;
+    midi_pkg[2] = ctrl; 
+    
 
     float sf = get_midi_voltage_scaling_factor(); 
     float midi_voltage = get_midi_scaled_voltage(raw_voltage); 
@@ -302,13 +364,11 @@ static struct MIDI_Package create_midi_package(uint8_t status,
     if (status == 0x80 || status == 0x81) {
         /* Turn off the last note we turned on */
         /* TODO: if we change this while on during a pot change we'll have to update that last note as well */
-        midi.note = lnote; 
+        midi_pkg[1] = lnote; 
     } else {
-        midi.note = (uint8_t)(midi_voltage * sf); 
+        midi_pkg[1] = (uint8_t)(midi_voltage * sf); 
 
     }
-
-    return midi; 
 
 }; 
 
@@ -316,18 +376,9 @@ static struct MIDI_Package create_midi_package(uint8_t status,
 static int transmit_midi_package_to_uart(struct UART_Instance * p_inst, struct MIDI_Package * tx_data) 
 {
 
-    // uint8_t midi_bytes[3] = {
-    //     tx_data->status,
-    //     tx_data->note,
-    //     tx_data->velocity
-    // }; 
-
-    /* transmit */
-    // int ret = uart_tx(uart_dev, midi_bytes, sizeof(midi_bytes), SYS_FOREVER_US);
-
-    // 0 on success 
-    // return (ret == 0) ? 0 : ret; 
-    return 0; 
+    size_t d_len = sizeof(midi_pkg); 
+    int ret = uart_tx(uart_dev, midi_pkg, d_len, SYS_FOREVER_MS);
+    return (ret == 0) ? 0 : ret; 
 
 } 
 
@@ -637,14 +688,12 @@ static void state_run_run(void * o)
             /* handle UART Write information here */
             struct UART_SM_Evt_Sig_Write_MIDI *midi = &p_evt->data.midi_write; 
 
-            struct MIDI_Package MIDI_Pkg =  \
-            create_midi_package(midi->midi_status, midi->raw_voltage, midi->last_note, midi->ctrl_byte); 
-            
-            int ret = transmit_midi_package_to_uart(&p_inst, &MIDI_Pkg); 
-            if ( ret != 0) {
-                printk("UART TX ERROR %d\n", ret); 
-            }; 
+            create_midi_package(p_inst, midi->midi_status, midi->raw_voltage, midi->last_note, midi->ctrl_byte);
 
+            int ret = transmit_midi_package_to_uart(p_inst, &midi_pkg); 
+            if ( ret != 0) {
+                printk("ERROR TX %d\n", ret);
+            }; 
             break;
         #if CONFIG_FKMG_UART_SHUTDOWN_ENABLED
         case k_UART_Evt_Sig_Instance_Deinitialized:
