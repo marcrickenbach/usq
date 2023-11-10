@@ -711,24 +711,22 @@ static void set_gate_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
 */
 static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
 {
-    uint8_t midi_ch_base = p_inst->seq.edge[id] ? 0x80 : 0x90; 
-    uint8_t midi_status_ch = midi_ch_base | id;
-    uint8_t last_note = p_inst->midi.last_note[id];
-    uint16_t raw_voltage = p_inst->seq.voltage[p_inst->seq.step[id]]; 
-    uint8_t ctrl_byte = 0x75; 
 
-    struct Sequencer_Evt evt = {
-        .sig = k_UART_Evt_Sig_Write_Ready,
-        .data.midi_write.id = id,
-        .data.midi_write.midi_status = midi_status_ch,
-        .data.midi_write.raw_voltage = raw_voltage,
-        .data.midi_write.last_note = last_note,
-        .data.midi_write.ctrl_byte = ctrl_byte
+    uint8_t midi_ch_base = p_inst->seq.edge[id] ? 0x80 : 0x90; 
+
+    struct UART_Evt_Data_Write_MIDI evt_cfg = {
+        .midi_status = midi_ch_base | id,
+        .raw_voltage = p_inst->seq.voltage[p_inst->seq.step[id]],
+        .ctrl_byte = 0x75,
+        .last_note = p_inst->midi.last_note[id]
     };
 
-    /* Broadcast to MIDI/UART listener that we're ready to write and have data available */
-    broadcast_event_to_listeners(p_inst, &evt);
+    struct UART_Evt evt = {
+        .sig = k_UART_Evt_Sig_Write_Ready,
+        .data.midi_write = evt_cfg
+    };
 
+    broadcast_event_to_listeners(p_inst, &evt);
 }
 
 /*

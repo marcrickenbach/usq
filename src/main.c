@@ -196,7 +196,7 @@ static void on_led_write_ready(struct LED_Driver_Evt *p_evt)
             .sig = k_LED_Driver_SM_Evt_LED_Driver_Write,
             // .data.write = &p_evt->data.write
     };
-    
+
     evt.data.write.id = p_evt->data.write.id;
     evt.data.write.val = p_evt->data.write.val;
 
@@ -205,9 +205,11 @@ static void on_led_write_ready(struct LED_Driver_Evt *p_evt)
     
 }
 
-static void on_midi_write_ready(struct Sequencer_Evt *p_evt) 
+static void on_midi_write_ready(struct UART_Evt *p_evt) 
 {
     assert(p_evt->sig == k_UART_Evt_Sig_Write_Ready);
+
+    struct UART_SM_Evt_Sig_Write_MIDI * evt_cfg = &p_evt->data.midi_write; 
 
     enum UART_Id id = p_evt->data.midi_write.id; 
 

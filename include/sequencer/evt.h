@@ -18,6 +18,7 @@ extern "C" {
 #include <zephyr/kernel.h>
 
 #include "id.h"
+#include "uart/evt.h"
 
 
 /* *****************************************************************************
