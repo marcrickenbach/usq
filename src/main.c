@@ -182,7 +182,6 @@ static void on_pot_changed(struct Pot_Evt *p_evt)
     }; 
 
     k_msgq_put(&sequencer_sm_evt_q, &evt, K_NO_WAIT);
-
 }
 
 static void on_led_write_ready(struct LED_Driver_Evt *p_evt) 
@@ -197,7 +196,6 @@ static void on_led_write_ready(struct LED_Driver_Evt *p_evt)
     };
 
     k_msgq_put(&led_driver_sm_evt_q, &evt, K_NO_WAIT); 
-    
 }
 
 static void on_midi_write_ready(struct UART_Evt *p_evt) 
@@ -211,9 +209,7 @@ static void on_midi_write_ready(struct UART_Evt *p_evt)
             .data.midi_write = *p_write
     };
 
-    /*  pass along event for SM to handle */
     k_msgq_put(&uart_sm_evt_q, &evt, K_NO_WAIT); 
-    
 }
 
 
