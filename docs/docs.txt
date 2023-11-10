@@ -69,6 +69,9 @@
 |                   
 |       NOTES:      ?   : currently, all midi calculations are done in UART thread. Does it make more sense to handle all those calcs in Sequencer thread?
 |                   note: Listener and callback are defined in main which tranlsates the public event into a thread specific SM event, then queues that.
+|                   X   : uart tx on nucleo isn't working at the moment. Getting device error. I *think* it might have something to do with the way the nucleo board
+|                         has configured the mcu, but not entirely sure what's going on. device ready and device config pass just fine as far as I can tell. Just not
+|                           RX enable or TX. 
 |
 |
 |
@@ -104,7 +107,7 @@
 |
 |
 |   GENERAL QUESTIONS:
-|       - Generally curious about best practices for storing data within objects (i.e. seq data in Sequencer)
+|       - Generally curious about best practices for storing data within objects (e.g. seq data in Sequencer)
 |       - What does genericizing the Pot module look like, especially with a MUX in the mix?
 |       - How do I cleanly copy a public event to a private sm event without getting a warning about mismatched types?
 |
