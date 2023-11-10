@@ -270,6 +270,7 @@ int main (void) {
     LED_Driver_Init_Instance(&led_driver_inst_cfg);
     wait_on_instance_initialized();
 
+
      /* Instance: UART Module */
     struct UART_Instance_Cfg uart_inst_cfg = {
         .p_inst = &uart_inst,
@@ -282,6 +283,7 @@ int main (void) {
     };
     UART_Init_Instance(&uart_inst_cfg);
     wait_on_instance_initialized();
+
 
     /* Instance: Sequencer */
     struct Sequencer_Instance_Cfg sequencer_inst_cfg = {
