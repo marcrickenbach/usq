@@ -119,7 +119,7 @@ static struct Sequencer_Instance * sm_ctx_to_instance(struct smf_ctx * p_sm_ctx)
 static enum Sequencer_Step_Id next_step(struct Sequencer_Instance * p_inst, enum Sequencer_Step_Id id)
 {
     uint8_t step = p_inst->seq.step[id]; 
-    return((step + 1) % k_Seq_Step_Id_Cnt);
+    return((step + 1) % p_inst->seq.maxStep[id]);
 }
 
 static void reset_timer(struct Sequencer_Instance * p_inst, 
@@ -151,7 +151,7 @@ static uint16_t calculate_gate_timer_delay(struct Sequencer_Instance * p_inst, e
     uint16_t delay_val; 
 
     if (!edge) {
-        delay_val = p_inst->seq.time[next_step(&p_inst, id)]; 
+        delay_val = p_inst->seq.time[next_step(p_inst, id)]; 
         delay_val = delay_val >> 1; 
         p_inst->seq.edge[id] = true; 
         p_inst->seq.delay_buffer[id] = delay_val; 
@@ -338,7 +338,7 @@ static void config_initial_time_delays(struct Sequencer_Instance * p_inst)
 {
     for (int i = 0; i < ARRAY_SIZE(p_inst->seq.time); ++i)
     {
-        p_inst->seq.time[i] = 500 + (i * 100);
+        p_inst->seq.time[i] = 10 + (i * 100);
     }
 }
 
@@ -346,7 +346,7 @@ static void config_initial_time_delays(struct Sequencer_Instance * p_inst)
 static void config_initial_sequencer_values(struct Sequencer_Instance * p_inst) {
     
     config_initial_voltages(p_inst); 
-    // config_initial_time_delays(p_inst);
+    config_initial_time_delays(p_inst);
 
     p_inst->seq.maxStep[0] = 8; 
     p_inst->seq.maxStep[1] = 8; 
@@ -732,7 +732,7 @@ static void set_gate_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
 
     bool edge = p_inst->seq.edge[id];
     int result = gpio_pin_set_dt(&gates[id], !edge);
-
+// change edge here?
     if (result < 0) printk("Gate %d Error: %d\n", id, result);
 }
 
@@ -921,7 +921,9 @@ static void state_run_run(void * o)
 
             reset_timer(p_inst, p_stepped->id, new_tix);
 
-            advance_sequencer_step(p_inst, p_stepped->id);
+            if (p_inst->seq.edge[p_stepped->id]) {
+                advance_sequencer_step(p_inst, p_stepped->id);
+            }
 
             break; 
         case k_Seq_SM_Evt_Sig_Pot_Value_Changed:
