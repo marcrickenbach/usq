@@ -181,10 +181,6 @@ static void on_pot_changed(struct Pot_Evt *p_evt)
         .data.pot_changed = *p_changed
     }; 
 
-    /* Pass along event to the sequencer state machine. 
-       There we'll update our sequencer values and test to see if we're in the middle of a step
-       which the potentiometer controls. If so, we can take care of any necessary adjustments (DAC or changing the timer)
-    */
     k_msgq_put(&sequencer_sm_evt_q, &evt, K_NO_WAIT);
 
 }
