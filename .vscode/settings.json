@@ -48,6 +48,7 @@
         "gpio.h": "c",
         "id.h": "c",
         "listener_cb.h": "c",
-        "toolchain.h": "c"
+        "toolchain.h": "c",
+        "uart.h": "c"
     },
 }

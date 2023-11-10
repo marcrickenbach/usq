@@ -173,6 +173,7 @@ static void wait_on_instance_initialized(void)
 static void on_pot_changed(struct Pot_Evt *p_evt)
 {
     assert(p_evt->sig == k_Pot_Evt_Sig_Changed);
+
     struct Sequencer_SM_Evt_Sig_Pot_Value_Changed * p_changed = &p_evt->data.changed;
 
     struct Sequencer_SM_Evt evt = {
@@ -190,17 +191,15 @@ static void on_pot_changed(struct Pot_Evt *p_evt)
 
 static void on_led_write_ready(struct LED_Driver_Evt *p_evt) 
 {
-    assert(p_evt->sig == k_Seq_Evt_Sig_LED_Write_Ready);
+    assert(p_evt->sig == k_LED_Driver_Evt_Sig_Write_Ready);
+
+    struct LED_Driver_SM_Evt_Sig_LED_Driver_Write * p_write = &p_evt->data.write;
 
     struct LED_Driver_SM_Evt evt = {
             .sig = k_LED_Driver_SM_Evt_LED_Driver_Write,
-            // .data.write = &p_evt->data.write
+            .data.write = *p_write
     };
 
-    evt.data.write.id = p_evt->data.write.id;
-    evt.data.write.val = p_evt->data.write.val;
-
-    /*  pass along event for SM to handle */
     k_msgq_put(&led_driver_sm_evt_q, &evt, K_NO_WAIT); 
     
 }
@@ -209,17 +208,11 @@ static void on_midi_write_ready(struct UART_Evt *p_evt)
 {
     assert(p_evt->sig == k_UART_Evt_Sig_Write_Ready);
 
-    struct UART_SM_Evt_Sig_Write_MIDI * evt_cfg = &p_evt->data.midi_write; 
-
-    enum UART_Id id = p_evt->data.midi_write.id; 
+    struct UART_SM_Evt_Sig_Write_MIDI * p_write = &p_evt->data.midi_write; 
 
     struct UART_SM_Evt evt = {
             .sig = k_UART_SM_Evt_Sig_Write_MIDI,
-            .data.midi_write.id = id,
-            .data.midi_write.midi_status = p_evt->data.midi_write.midi_status,
-            .data.midi_write.raw_voltage = p_evt->data.midi_write.raw_voltage,
-            .data.midi_write.last_note = p_evt->data.midi_write.last_note,
-            .data.midi_write.ctrl_byte = p_evt->data.midi_write.ctrl_byte
+            .data.midi_write = *p_write
     };
 
     /*  pass along event for SM to handle */

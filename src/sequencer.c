@@ -715,6 +715,7 @@ static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
     uint8_t midi_ch_base = p_inst->seq.edge[id] ? 0x80 : 0x90; 
 
     struct UART_Evt_Data_Write_MIDI evt_cfg = {
+        .id = id,
         .midi_status = midi_ch_base | id,
         .raw_voltage = p_inst->seq.voltage[p_inst->seq.step[id]],
         .ctrl_byte = 0x75,
@@ -739,9 +740,19 @@ static void set_ui_on_step (struct Sequencer_Instance * p_inst, enum Sequencer_I
 
     ui_data |= (1U << p_inst->seq.step[id]); 
 
-    /* Broadcast to UI listener that we're ready to write and have data available */
+    struct LED_Driver_Evt_Write_Ready evt_cfg = {
+        .id = id,
+        .val = ui_data
+    }; 
 
+    struct LED_Driver_Evt evt = {
+        .sig = k_LED_Driver_Evt_Sig_Write_Ready,
+        .data.write = evt_cfg
+    };
+
+    broadcast_event_to_listeners(p_inst, &evt);
 }
+
 
 static void advance_sequencer_step (struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
 {
