@@ -218,15 +218,6 @@ static void on_midi_write_ready(struct UART_Evt *p_evt)
  * Public.
  */
 
-static void pre_populate_adc_values(void) 
-{
-    for (int i = 0; i < ARRAY_SIZE(pot_inst.adc_current_reading); ++i)
-    {
-        pot_inst.adc_current_reading[i] = 500 + (i * 10);
-    }
-}
-
-
       int main (void) {
     // /* Instance: Pot */
     struct Pot_Instance_Cfg pot_inst_cfg = {
@@ -322,9 +313,6 @@ static void pre_populate_adc_values(void)
         .cb      = on_midi_write_ready
     };
     Sequencer_Add_Listener(&midi_write_lsnr_cfg);
-
-    /* FIXME: remove when we have the pot module up and running correctly */
-    pre_populate_adc_values(); 
 
     return 0;
 

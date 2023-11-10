@@ -325,13 +325,45 @@ static void init_gate_gpios(struct Sequencer_Instance * p_inst)
     }
 }
 
+/* INITIAL VALUE CONFIGURATION */
+static void config_initial_voltages(struct Sequencer_Instance * p_inst)
+{
+    for (int i = 0; i < ARRAY_SIZE(p_inst->seq.voltage); ++i)
+    {
+        p_inst->seq.voltage[i] = 500 + (i * 100);
+    }
+}
+
+static void config_initial_time_delays(struct Sequencer_Instance * p_inst)
+{
+    for (int i = 0; i < ARRAY_SIZE(p_inst->seq.time); ++i)
+    {
+        p_inst->seq.time[i] = 500 + (i * 100);
+    }
+}
+
+
+static void config_initial_sequencer_values(struct Sequencer_Instance * p_inst) {
+    
+    config_initial_voltages(p_inst); 
+    // config_initial_time_delays(p_inst);
+
+    p_inst->seq.maxStep[0] = 8; 
+    p_inst->seq.maxStep[1] = 8; 
+
+}
+
 
 static void config_instance_deferred(
         struct Sequencer_Instance     * p_inst,
         struct Sequencer_Instance_Cfg * p_cfg)
 {
+
+    /* FIXME: These are for testing w/o hardware */
+    config_initial_sequencer_values(p_inst); 
+
     init_hardware_timers(p_inst, p_cfg);
-    init_gate_gpios(p_inst); 
+    init_gate_gpios(p_inst);
 }
 
 /* Since configuration starts on caller's thread, configure fields that require
@@ -757,7 +789,7 @@ static void set_ui_on_step (struct Sequencer_Instance * p_inst, enum Sequencer_I
 static void advance_sequencer_step (struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
 {
 
-    if (p_inst->seq.maxStep[id] == 0) return;
+    if (&p_inst->seq.maxStep[id] == 0) return;
 
     uint8_t next_step = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
 
@@ -848,9 +880,6 @@ static void state_init_run(void * o)
     struct Sequencer_SM_Evt_Sig_Init_Instance * p_ii = &p_evt->data.init_inst;
     config_instance_deferred(p_inst, &p_ii->cfg);
 
-
-    p_inst->seq.voltage[0] = 1024; 
-
     broadcast_instance_initialized(p_inst, p_ii->cfg.cb);
 
     smf_set_state(SMF_CTX(p_sm), &states[run]);
@@ -892,7 +921,7 @@ static void state_run_run(void * o)
 
             reset_timer(p_inst, p_stepped->id, new_tix);
 
-            advance_sequencer_step(&p_inst, p_stepped->id);
+            advance_sequencer_step(p_inst, p_stepped->id);
 
             break; 
         case k_Seq_SM_Evt_Sig_Pot_Value_Changed:
