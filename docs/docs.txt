@@ -21,7 +21,7 @@
 |
 |
 |	///////////////////////////////////////
-| - // DAC Thread			
+| - // DAC Thread
 |	///////////////////////////////////////	
 |	
 |	    FUNCTION:   Sets DAC Value via public API.
@@ -31,7 +31,7 @@
 |
 |
 |	///////////////////////////////////////		
-| -	// Pot Thread				
+| -	// Pot Thread
 |	///////////////////////////////////////		
 |
 |	    FUNCTION:   (1), Does an ADC conversion at regular intervals set by k_timer.
@@ -42,9 +42,6 @@
 |	
 |       NOTES:      note: Listener & callback is defined in main.c. On a pot change, we put a message in the sequencer queue with a Sequencer_Evt.
 |                   note: edited pot id.h with descriptive names for all pots. 
-|                   ?   : Having issues with the listener callback. I enter the broadcast() function, but the code blocks when it tries to call the callback.
-|                         looks like callback isn't being passed along to broadcast()? Might also be that since we're not filtered yet, almost every reading fires a pot_changed event,
-|                         so there appear to be some overflow then an assertion failure down the line.
 |
 |
 |   ///////////////////////////////////////
