@@ -9,7 +9,7 @@
     cause pot_change broadcast event to over-fire, resulting in crashes down
     the line. 
 
-    Abstract more. Right now this module is somewhat cemented in the mux config
+    Abstract more? Right now this module is somewhat cemented in the mux config
     for my project. Biggest sticking point for me at the moment is how to account
     for various mux pins, particularly in the mux adv function. 
  */
@@ -92,7 +92,10 @@ const struct gpio_dt_spec adc_bank_2 = GPIO_DT_SPEC_GET(GPIO_PINS, adc_addr_bank
 const struct gpio_dt_spec adc_bank_3 = GPIO_DT_SPEC_GET(GPIO_PINS, adc_addr_bank_3_gpios); 
 const struct gpio_dt_spec adc_bank_4 = GPIO_DT_SPEC_GET(GPIO_PINS, adc_addr_bank_4_gpios); 
 
-
+/* 
+ * Functions in sequencer module are dependent on this order for sorting through readings. 
+ * Should this order be changed, make sure to account for it in other module receiving pot data. 
+*/
 static const uint8_t POT_ADC_ADDRESS[k_Pot_Id_Cnt] = {
     21, // VOLT 1 CH 1
     23, // VOLT 2 CH 1
@@ -594,34 +597,36 @@ static uint16_t adc_convert_pot (struct Pot_Instance * p_inst, enum Pot_Id id)
     return val; 
 } 
 
+/* 
+ * Pot Id is advanced in the argument at call for this fn. We only advance it here while we keep the current Pot Id intact for this cycle.
+ * For the adc reading, the pot advancement occurs on timer expiry callback. 
+ * POT_ADC_ADDRESS array contains all the information we need to set our muxes. First three bits (from LSB) tell us address pins to set on mux
+ * while the second nybble tells us which mux to enable.
+ * As it stands, Mux Address pins are on port B pins 0,1,2. Since these correspond directly to the bits of potAddress we're interested in, 
+ * we can mask the rest of those bits and use this as our value. However, this step doesn't lend itself to a generic implementation as the
+ * gpio_port_set_masked_raw function needs all pins to be on the same port. 
+ */
+
 static void advance_adc_mux (enum Pot_Id id) 
 {
-    
-    /* Set the MUX to the next pot while we're still dealing with the current one */
-    // enum Pot_Id nextPot = next_pot(id);
-    uint8_t potAddress = POT_ADC_ADDRESS[id];
 
-    /* Port bit masks */
+    uint8_t potAddress = POT_ADC_ADDRESS[id];
     uint32_t addressBits = potAddress & 0x07;
     uint32_t mask_val = 0;
 
-    /*  Deactivate all Multiplexers. */
     if (gpio_port_set_masked_raw(GPIOC_PORT, MUX_BANK_MASK, 0x0000)) {
         printk("Error Setting Mux Banks Low\n"); 
     }
 
-    /*  Mux Address pins are on port B pins 0,1,2. Since these correspond directly to the bits of potAddress we're interested in, we can mask the rest of those bits and use this as our value. This step doesn't yet lend itself to a generic implementation, however. */
-
     if (gpio_port_set_masked_raw(GPIOB_PORT, MUX_ADDR_MASK, addressBits & MUX_ADDR_MASK)) {
          printk("Error Setting Mux Address Pins\n"); 
-    };
+    }
 
-    // Activate the appropriate multiplexer  
     mask_val = (1U << ((potAddress >> 4) + MUX_GPIO_OFFSET)); 
           
     if (gpio_port_set_masked_raw(GPIOC_PORT, MUX_BANK_MASK, mask_val)) {
         printk("Error Setting Mux Bank High\n"); 
-    }; 
+    } 
 };
 
 
@@ -635,7 +640,6 @@ static uint16_t adc_filter_pot (struct Pot_Instance * p_inst, enum Pot_Id id, ui
 static bool did_pot_change (struct Pot_Instance * p_inst, enum Pot_Id id, uint16_t val) 
 {
     bool status = false; 
-    static uint16_t valtest = 0; 
 
     if (val != p_inst->adc_current_reading[id]) {
         status = true;
@@ -763,11 +767,14 @@ static void state_run_run(void * o)
             struct Pot_SM_Evt_Sig_Convert * p_convert = &p_evt->data.convert;
 
             uint16_t val = adc_convert_pot(&p_inst, p_convert->id);
+            
             advance_adc_mux(next_pot(p_convert->id)); 
+            
             uint16_t filtered_reading = adc_filter_pot(&p_inst, p_convert->id, val);  
 
             if (did_pot_change(&p_inst, p_convert->id, filtered_reading)) {
-                /* Since ADC values aren't yet filtered, this is firing too often and getting stuck in the q_sm_event assertion. There also seems to be an issue there when we want to broadcast an event. The CB function seems to get lost. */                       
+                /* Since ADC values aren't yet filtered, this is firing too often and getting stuck in the q_sm_event assertion. 
+                Earlier, there also seemed to be an issue there when we want to broadcast an event? The CB function seemed to get lost. */                       
                 // broadcast_pot_changed(&p_inst, p_convert->id, filtered_reading); 
             }
 
@@ -902,6 +909,7 @@ void Pot_Init_Instance(struct Pot_Instance_Cfg * p_cfg)
 
     init_adc_gpios(p_inst);
     init_adc_device(p_inst);
+
     init_module();
     init_instance(p_inst);
     config_instance_immediate(p_inst, p_cfg);
@@ -929,8 +937,6 @@ void Pot_Add_Listener(struct Pot_Listener_Cfg * p_cfg)
         return;
     }
     #endif
-
-    struct Pot_Instance * p_inst = p_cfg->p_inst;
 
     struct Pot_Listener * p_lsnr = p_cfg->p_lsnr;
     init_listener(p_lsnr);
