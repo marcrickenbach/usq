@@ -100,12 +100,12 @@
 |
 |
 |   GENERAL NOTES:
-|       - Barebones, as code stands, gates are firing every ~180 to 250 us. Bit of jitter? 
-|       - switched to jlink debugger, have that up and running on the nucleo board. 
+|       - Barebones, as code stands, gates are firing every ~180 to 250 us. Substantial jitter. 
+|       - Switched to jlink debugger, have that up and running on the nucleo board. 
 |
 |
 |   GENERAL QUESTIONS:
 |       - Generally curious about best practices for storing data within objects (i.e. seq data in Sequencer)
 |       - What does genericizing the Pot module look like, especially with a MUX in the mix?
-|       - In on_led_write_ready (main.c : 191), I'm unclear on correclty passing information from one event struct to another. What I have now seems to work, but is this correct?
+|       - How do I cleanly copy a public event to a private sm event without getting a warning about mismatched types?
 |
