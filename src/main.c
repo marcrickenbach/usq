@@ -230,7 +230,7 @@ static void pre_populate_adc_values(void)
 {
     for (int i = 0; i < ARRAY_SIZE(pot_inst.adc_current_reading); ++i)
     {
-        pot_inst.adc_current_reading[i] = 1024;
+        pot_inst.adc_current_reading[i] = 500 + (i * 10);
     }
 }
 
