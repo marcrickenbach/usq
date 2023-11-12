@@ -743,7 +743,7 @@ static void set_gate_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
  * Depends on whether or not uart module is uart in general or specifically a midi module? The latter might make more sense for
  * my general purposes. In that case, only message that something happened goes to module. (any sync issues to be aware of?)
 */
-static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
+static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_Id id, uint8_t step, uint8_t offset) 
 {
 
     uint8_t midi_ch_base = p_inst->seq.edge[id] ? 0x80 : 0x90; 
@@ -751,9 +751,10 @@ static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
     struct UART_Evt_Data_Write_MIDI evt_cfg = {
         .id = id,
         .midi_status = midi_ch_base | id,
-        .raw_voltage = p_inst->seq.voltage[p_inst->seq.step[id]],
         .ctrl_byte = 0x75,
-        .last_note = p_inst->midi.last_note[id]
+        .seq = (bool)id,
+        .step = step,
+        .offset = p_inst->seq.offset
     };
 
     struct UART_Evt evt = {
@@ -916,7 +917,7 @@ static void state_run_run(void * o)
             set_voltage_on_step(p_inst, p_stepped->id);
             set_gate_on_step(p_inst, p_stepped->id);
             set_ui_on_step (p_inst, p_stepped->id);
-            set_midi_on_step (p_inst, p_stepped->id);
+            set_midi_on_step (p_inst, p_stepped->id, p_inst->seq.step, p_inst->seq.offset);
 
             uint16_t new_tix = calculate_gate_timer_delay(p_inst, p_evt->data.stepped.id, p_inst->seq.edge[p_evt->data.stepped.id]);
             if (new_tix < 1) new_tix = 1;
