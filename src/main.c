@@ -176,12 +176,23 @@ static void on_pot_changed(struct Pot_Evt *p_evt)
 
     struct Sequencer_SM_Evt_Sig_Pot_Value_Changed * p_changed = &p_evt->data.changed;
 
-    struct Sequencer_SM_Evt evt = {
+    struct Sequencer_SM_Evt seq_evt = {
         .sig = k_Seq_SM_Evt_Sig_Pot_Value_Changed,
         .data.pot_changed = *p_changed
     }; 
 
-    k_msgq_put(&sequencer_sm_evt_q, &evt, K_NO_WAIT);
+    k_msgq_put(&sequencer_sm_evt_q, &seq_evt, K_NO_WAIT);
+
+    /* Only need to send voltages to store in the MIDI object */
+    if (p_changed->pot_id < 16) {
+        struct UART_SM_Evt uart_evt = {
+            .sig = k_UART_Evt_Sig_Changed,
+            .data.changed.stp = (uint8_t)p_changed->pot_id,
+            .data.changed = p_changed->val
+        }; 
+
+        k_msgq_put(&uart_sm_evt_q, &uart_evt, K_NO_WAIT); 
+    }
 }
 
 static void on_led_write_ready(struct LED_Driver_Evt *p_evt) 
