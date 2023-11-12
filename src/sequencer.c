@@ -353,6 +353,8 @@ static void config_initial_sequencer_values(struct Sequencer_Instance * p_inst) 
     p_inst->seq.maxStep[0] = 8; 
     p_inst->seq.maxStep[1] = 8; 
 
+    p_inst->seq.offset = 8; 
+
 }
 
 
@@ -917,7 +919,7 @@ static void state_run_run(void * o)
             set_voltage_on_step(p_inst, p_stepped->id);
             set_gate_on_step(p_inst, p_stepped->id);
             set_ui_on_step (p_inst, p_stepped->id);
-            set_midi_on_step (p_inst, p_stepped->id, p_inst->seq.step, p_inst->seq.offset);
+            set_midi_on_step (p_inst, p_stepped->id, p_inst->seq.step[p_stepped->id], p_inst->seq.offset);
 
             uint16_t new_tix = calculate_gate_timer_delay(p_inst, p_evt->data.stepped.id, p_inst->seq.edge[p_evt->data.stepped.id]);
             if (new_tix < 1) new_tix = 1;

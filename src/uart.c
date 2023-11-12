@@ -10,6 +10,9 @@
  *  and eventual crash after some time. The rest of the program continues just fine
  *  it seems, but transmission errs out. The error so far has been -EINVAL (-22)
  *  that points to an 'invalid argument'. 
+ * 
+ *  *-> convert_voltage_to_midi: need to adjust arguments for this fn so we know which 
+ *      array element to populate. 
  */
 
 /* *****************************************************************************
@@ -325,10 +328,18 @@ static void init_uart_device(struct UART_Instance * p_inst)
 
 /* ************************************************
  * MIDI Functions
- * Most basic of sketches. TODO: study up!
- * FIXME: uart_tx function errs, getting -ENODEV error message,
- * I suspect it has something to do with how the nucleo_board is configured?
  */
+
+
+static uint8_t get_midi_note(struct UART_Instance * p_inst, enum UART_Id id, bool seq, uint8_t step, uint8_t offset)
+{
+    /* since we're sending a step here, with the offset that tells us where sequencer 1 starts (not seq 0), we know which array element of midi notes to pull*/
+    uint8_t idx = (seq == 1) ? (step + offset) : step; 
+    uint8_t note = p_inst->midi.note[idx]; 
+    return note; 
+
+}
+
 
 static float get_midi_voltage_scaling_factor(void) 
 {
@@ -344,40 +355,33 @@ static float get_midi_scaled_voltage(uint16_t raw_voltage)
     return ret; 
 }
 
-
-static void create_midi_package(struct UART_Instance * p_inst,
-                                uint8_t status, 
-                                uint16_t raw_voltage, 
-                                uint8_t lnote, 
-                                uint8_t ctrl) 
+static void convert_voltage_to_midi(struct UART_Instance * p_inst,
+                                bool sequencer, 
+                                uint8_t step, 
+                                uint16_t new_value) 
 {
 
-    int id = p_inst->id; 
-
-    midi_pkg[0] = status;
-    midi_pkg[2] = ctrl; 
-    
-
     float sf = get_midi_voltage_scaling_factor(); 
-    float midi_voltage = get_midi_scaled_voltage(raw_voltage); 
+    float midi_voltage = get_midi_scaled_voltage(new_value); 
 
-    if (status == 0x80 || status == 0x81) {
-        /* Turn off the last note we turned on */
-        /* TODO: if we change this while on during a pot change we'll have to update that last note as well */
-        midi_pkg[1] = lnote; 
-    } else {
-        midi_pkg[1] = (uint8_t)(midi_voltage * sf); 
-
-    }
+    // need to know which array element to populate. adjust arguments. 
+    /* p_inst.midi.note[step] = (uint8_t)midi_voltage */
 
 }; 
 
 
-static int transmit_midi_package_to_uart(struct UART_Instance * p_inst, struct MIDI_Package * tx_data) 
+static int transmit_midi_package_to_uart(struct UART_Instance * p_inst, uint8_t status, uint8_t note, uint8_t ctrl_byte) 
 {
 
-    size_t d_len = sizeof(midi_pkg); 
-    int ret = uart_tx(uart_dev, midi_pkg, d_len, SYS_FOREVER_MS);
+    uint8_t midi_package[3] = {
+        status,
+        note,
+        ctrl_byte
+    }; 
+
+    size_t d_len = sizeof(midi_package); 
+    
+    int ret = uart_tx(uart_dev, midi_package, d_len, SYS_FOREVER_MS);
     return (ret == 0) ? 0 : ret; 
 
 } 
@@ -688,12 +692,19 @@ static void state_run_run(void * o)
             /* handle UART Write information here */
             struct UART_SM_Evt_Sig_Write_MIDI *midi = &p_evt->data.midi_write; 
 
-            create_midi_package(p_inst, midi->midi_status, midi->raw_voltage, midi->last_note, midi->ctrl_byte);
+            // set up midi package in function
+            uint8_t midi_note = get_midi_note(p_inst, midi->id, midi->seq, midi->step, midi->offset);
 
-            int ret = transmit_midi_package_to_uart(p_inst, &midi_pkg); 
+            int ret = transmit_midi_package_to_uart(p_inst, midi->midi_status, midi_note, midi->ctrl_byte); 
             if ( ret != 0) {
                 printk("ERROR TX %d\n", ret);
             }; 
+            break;
+        case k_UART_SM_Evt_Sig_Changed:
+            struct UART_SM_Evt_Sig_Changed *midi_changed = &p_evt->data.changed; 
+
+            convert_voltage_to_midi(p_inst, midi_changed->seq, midi_changed->stp, midi_changed->val);
+
             break;
         #if CONFIG_FKMG_UART_SHUTDOWN_ENABLED
         case k_UART_Evt_Sig_Instance_Deinitialized:
