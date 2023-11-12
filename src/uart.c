@@ -4,15 +4,12 @@
 
 /* *****************************************************************************
  * TODO
- *
- *  Set MIDI transmission in the same way I would update values after a pot change.
- *  I have the uart transmitting correctly, but there seems to be some timing issue
- *  and eventual crash after some time. The rest of the program continues just fine
- *  it seems, but transmission errs out. The error so far has been -EINVAL (-22)
- *  that points to an 'invalid argument'. 
+ * Further testing after changes. I now store midi note data in this object and
+ * update them only on voltage pot changes. That way we don't recaculate midi notes
+ * on each firing. This has resolved previous crash issues. 
  * 
- *  *-> convert_voltage_to_midi: need to adjust arguments for this fn so we know which 
- *      array element to populate. 
+ * On each timer interrupt in sequencer layer, we send a note on or off to this
+ * object.
  */
 
 /* *****************************************************************************
