@@ -63,11 +63,13 @@
 |   ///////////////////////////////////////
 | -	// UART Thread
 |	///////////////////////////////////////
-|       FUNCTION:   Sequencer sends an event to UART thread.
-|                   Send functions will be called from State Machine state. 
+|       FUNCTION:   Sequencer sends an event to UART thread on timer interrupt. We only send on/off commands (and velocity if we choose to)
+|                   Send functions will be called from State Machine state.
+|                   Store MIDI note data in this object (instance->midi.note[16]). We update this array only on voltage pot change.
 |                   TODO: handle RX events to send back to Sequencer [?]
 |                   
-|       NOTES:      ?   : currently, all midi calculations are done in UART thread. Does it make more sense to handle all those calcs in Sequencer thread?
+|       NOTES:      ?   : currently, all midi calculations are done in UART thread.
+|                   ?   : Should I make a separate pot change listener for this thread or is it ok to handle queuing that event int he current one? 
 |                   note: Listener and callback are defined in main which tranlsates the public event into a thread specific SM event, then queues that.
 |                   X   : uart tx on nucleo isn't working at the moment. Getting device error. I *think* it might have something to do with the way the nucleo board
 |                         has configured the mcu, but not entirely sure what's going on. device ready and device config pass just fine as far as I can tell. Just not
