@@ -201,6 +201,10 @@ static void config_instance_deferred(
         struct UART_Instance     * p_inst,
         struct UART_Instance_Cfg * p_cfg)
 {
+
+    for (int i = 0; i < 16; i++) {
+        p_inst->midi.note[i] = 0 + (i * 5); 
+    }
     init_dma_device(p_inst); 
     init_uart_device(p_inst);
 
