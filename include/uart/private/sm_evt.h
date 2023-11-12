@@ -32,6 +32,7 @@ enum UART_SM_Evt_Sig{
     #if CONFIG_FKMG_UART_ALLOW_SHUTDOWN
 	k_UART_SM_Evt_Sig_Deinit_Instance,
     #endif
+    k_UART_SM_Evt_Sig_Changed,
 	k_UART_SM_Evt_Sig_Write_MIDI,
 	k_UART_SM_Evt_Sig_Force_Change,
 
@@ -52,9 +53,17 @@ struct UART_SM_Evt_Sig_Init_Instance{
 struct UART_SM_Evt_Sig_Write_MIDI{
     enum UART_Id id;
     uint8_t midi_status; 
-    uint16_t raw_voltage; 
-    uint8_t last_note;
     uint8_t ctrl_byte;
+    bool seq;
+    uint8_t step;
+    uint8_t offset;
+};
+
+/* Data signal k_UART_SM_Sig_Changed can generate. */
+struct UART_SM_Evt_Sig_Changed{
+    bool seq;
+    uint8_t stp;
+    uint16_t val; 
 };
 
 
@@ -64,6 +73,7 @@ struct UART_SM_Evt{
 	union UART_SM_Evt_Data{
         struct UART_SM_Evt_Sig_Init_Instance    init_inst;
         struct UART_SM_Evt_Sig_Write_MIDI       midi_write;
+        struct UART_SM_Evt_Sig_Changed          changed;
 	}data;
 };
 
