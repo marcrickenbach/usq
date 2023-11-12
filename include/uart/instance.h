@@ -71,6 +71,9 @@ struct UART_Instance{
         sys_snode_t instance;
     }node;
 
+    struct {
+        uint8_t note[16];
+    }midi; 
 
     /* Current pot. */
     enum UART_Id id;
