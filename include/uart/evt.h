@@ -53,13 +53,21 @@ struct UART_Evt_Data_Instance_Initialized{
     struct UART_Instance * p_inst;
 };
 
-/* Data signal k_UART_Evt_Sig_Changed can generate. */
+/* Data signal k_UART_Evt_Sig_Write_Ready can generate. */
 struct UART_Evt_Data_Write_MIDI{
     enum UART_Id id;
     uint8_t midi_status; 
-    uint16_t raw_voltage; 
-    uint8_t last_note;
     uint8_t ctrl_byte;
+    bool seq;
+    uint8_t step;
+    uint8_t offset;
+};
+
+/* Data signal k_UART_Evt_Sig_Changed can generate. */
+struct UART_Evt_Data_Changed{
+    bool seq;
+    uint8_t stp; 
+    uint16_t val; 
 };
 
 /* Events (i.e. signal + signal's data if any) that can be generated. */
