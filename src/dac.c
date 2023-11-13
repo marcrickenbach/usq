@@ -192,13 +192,13 @@ static void dac_device_init(void)
         }
 }
 
-static void config_instance_deferred(
-        struct Pot_Instance     * p_inst,
-        struct Pot_Instance_Cfg * p_cfg)
-{
+// static void config_instance_deferred(
+//         struct Pot_Instance     * p_inst,
+//         struct Pot_Instance_Cfg * p_cfg)
+// {
 
 
-}
+// }
 
 /* Since configuration starts on caller's thread, configure fields that require
  * immediate and/or inconsequential configuration and defer rest to be handled
@@ -382,12 +382,12 @@ static bool find_list_containing_listener_and_remove_listener(
 }
 #endif
 
-static bool signal_has_listeners(
-        struct DAC_Instance * p_inst,
-        enum DAC_Evt_Sig      sig)
-{
-    return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
-}
+// static bool signal_has_listeners(
+//         struct DAC_Instance * p_inst,
+//         enum DAC_Evt_Sig      sig)
+// {
+//     return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
+// }
 
 /* **************
  * Event Queueing

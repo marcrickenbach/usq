@@ -110,14 +110,14 @@ static enum LED_Driver_Err_Id check_listener_cfg_param_for_errors(
 }
 #endif
 
-static void clear_listener(struct LED_Driver_Instance * p_lsnr)
+static void clear_listener(struct LED_Driver_Listener * p_lsnr)
 {
     memset(p_lsnr, 0, sizeof(*p_lsnr));
 }
 
 static void config_listener(
         struct LED_Driver_Listener     * p_lsnr,
-        struct LED_Driver_Instance_Cfg * p_cfg)
+        struct LED_Driver_Listener_Cfg * p_cfg)
 {
     /* Set listner's instance it is listening to. */
     p_lsnr->p_inst = p_cfg->p_inst;
@@ -126,7 +126,7 @@ static void config_listener(
     p_lsnr->cb = p_cfg->cb;
 }
 
-static void init_listener(struct LED_Driver_Instance * p_lsnr)
+static void init_listener(struct LED_Driver_Listener * p_lsnr)
 {
     clear_listener(p_lsnr);
 }
@@ -373,12 +373,12 @@ static bool find_list_containing_listener_and_remove_listener(
 }
 #endif
 
-static bool signal_has_listeners(
-        struct LED_Driver_Instance * p_inst,
-        enum LED_Driver_Evt_Sig      sig)
-{
-    return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
-}
+// static bool signal_has_listeners(
+//         struct LED_Driver_Instance * p_inst,
+//         enum LED_Driver_Evt_Sig      sig)
+// {
+//     return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
+// }
 
 /* **************
  * Event Queueing
@@ -680,8 +680,6 @@ void LED_Driver_Add_Listener(struct LED_Driver_Listener_Cfg * p_cfg)
         return;
     }
     #endif
-
-    struct LED_Driver_Instance * p_inst = p_cfg->p_inst;
 
     struct LED_Driver_Listener * p_lsnr = p_cfg->p_lsnr;
     init_listener(p_lsnr);

@@ -203,7 +203,7 @@ static void config_listener(
     p_lsnr->cb = p_cfg->cb;
 }
 
-static void init_listener(struct Seq_Listener * p_lsnr)
+static void init_listener(struct Sequencer_Listener * p_lsnr)
 {
     clear_listener(p_lsnr);
 }
@@ -565,12 +565,12 @@ static bool find_list_containing_listener_and_remove_listener(
 }
 #endif
 
-static bool signal_has_listeners(
-        struct Sequencer_Instance * p_inst,
-        enum Sequencer_Evt_Sig      sig)
-{
-    return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
-}
+// static bool signal_has_listeners(
+//         struct Sequencer_Instance * p_inst,
+//         enum Sequencer_Evt_Sig      sig)
+// {
+//     return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
+// }
 
 /* **************
  * Event Queueing
@@ -750,7 +750,7 @@ static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
 
     uint8_t midi_ch_base = p_inst->seq.edge[id] ? 0x80 : 0x90; 
 
-    struct UART_Evt_Data_Write_MIDI evt_cfg = {
+    struct Sequencer_Evt_MIDI_Write_Ready evt_cfg = {
         .id = id,
         .midi_status = midi_ch_base | id,
         .ctrl_byte = 0x75,
@@ -759,7 +759,7 @@ static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
         .offset = p_inst->seq.offset
     };
 
-    struct UART_Evt evt = {
+    struct Sequencer_Evt evt = {
         .sig = k_UART_Evt_Sig_Write_Ready,
         .data.midi_write = evt_cfg
     };
@@ -777,14 +777,14 @@ static void set_ui_on_step (struct Sequencer_Instance * p_inst, enum Sequencer_I
 
     ui_data |= (1U << p_inst->seq.step[id]); 
 
-    struct LED_Driver_Evt_Write_Ready evt_cfg = {
+    struct Sequencer_Evt_LED_Write_Ready evt_cfg = {
         .id = id,
         .val = ui_data
     }; 
 
-    struct LED_Driver_Evt evt = {
+    struct Sequencer_Evt evt = {
         .sig = k_LED_Driver_Evt_Sig_Write_Ready,
-        .data.write = evt_cfg
+        .data.led_write = evt_cfg
     };
 
     broadcast_event_to_listeners(p_inst, &evt);
@@ -794,7 +794,7 @@ static void set_ui_on_step (struct Sequencer_Instance * p_inst, enum Sequencer_I
 static void advance_sequencer_step (struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
 {
 
-    if (&p_inst->seq.maxStep[id] == 0) return;
+    if (p_inst->seq.maxStep[id] == 0) return;
 
     uint8_t next_step = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
 
@@ -934,8 +934,8 @@ static void state_run_run(void * o)
         case k_Seq_SM_Evt_Sig_Pot_Value_Changed:
             struct Sequencer_SM_Evt_Sig_Pot_Value_Changed * p_pot_changed = &p_evt->data.pot_changed; 
             
-            post_updated_pot_value(&p_inst, p_pot_changed->pot_id, p_pot_changed->pot_id);
-            check_current_step(&p_inst, p_pot_changed->pot_id);
+            post_updated_pot_value(p_inst, p_pot_changed->pot_id, p_pot_changed->pot_id);
+            check_current_step(p_inst, p_pot_changed->pot_id);
 
             break;
         case k_Seq_SM_Evt_Sig_Btn_Status_Changed:

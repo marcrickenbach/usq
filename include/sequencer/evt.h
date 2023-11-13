@@ -84,11 +84,12 @@ struct Sequencer_Evt_LED_Write_Ready{
 
 /* Data signal k_Seq_Evt_Sig_MIDI_Write_Ready can generate*/
 struct Sequencer_Evt_MIDI_Write_Ready{
-    enum Sequencer_Id id;
+    enum UART_Id id;
     uint8_t midi_status; 
-    uint16_t raw_voltage; 
-    uint8_t last_note;
     uint8_t ctrl_byte;
+    bool seq;
+    uint8_t step;
+    uint8_t offset;
 };
 
 /* Events (i.e. signal + signal's data if any) that can be generated. */

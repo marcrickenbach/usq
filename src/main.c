@@ -10,6 +10,7 @@
 #include <zephyr/drivers/clock_control/stm32_clock_control.h>
 
 #include <assert.h>
+#include <string.h>
 
 #include "main.h"
 
@@ -174,7 +175,7 @@ static void on_pot_changed(struct Pot_Evt *p_evt)
 {
     assert(p_evt->sig == k_Pot_Evt_Sig_Changed);
 
-    struct Sequencer_SM_Evt_Sig_Pot_Value_Changed * p_changed = &p_evt->data.changed;
+    struct Sequencer_SM_Evt_Sig_Pot_Value_Changed * p_changed = (struct Sequencer_SM_Evt_Sig_Pot_Value_Changed *)&p_evt->data.changed;
 
     struct Sequencer_SM_Evt seq_evt = {
         .sig = k_Seq_SM_Evt_Sig_Pot_Value_Changed,
@@ -188,7 +189,7 @@ static void on_pot_changed(struct Pot_Evt *p_evt)
         struct UART_SM_Evt uart_evt = {
             .sig = k_UART_Evt_Sig_Changed,
             .data.changed.stp = (uint8_t)p_changed->pot_id,
-            .data.changed = p_changed->val
+            .data.changed.val = p_changed->val
         }; 
 
         k_msgq_put(&uart_sm_evt_q, &uart_evt, K_NO_WAIT); 
@@ -199,17 +200,22 @@ static void on_uart_rx_ready(struct UART_Evt * p_evt)
 {
     assert(p_evt->sig == k_UART_Evt_Sig_RX_Ready);
 
+    uint8_t bytes[3] = {0};
+
     struct Sequencer_SM_Evt evt = {
         .sig = k_Seq_SM_Evt_Sig_UART_RX_Received
     };
 
+    memcpy(evt.data.midi_cmd.bytes, bytes, 3);
+
+    k_msgq_put(&sequencer_sm_evt_q, &evt, K_NO_WAIT); 
 }
 
 static void on_led_write_ready(struct LED_Driver_Evt *p_evt) 
 {
     assert(p_evt->sig == k_LED_Driver_Evt_Sig_Write_Ready);
 
-    struct LED_Driver_SM_Evt_Sig_LED_Driver_Write * p_write = &p_evt->data.write;
+    struct LED_Driver_SM_Evt_Sig_LED_Driver_Write * p_write = (struct LED_Driver_SM_Evt_Sig_LED_Driver_Write *) &p_evt->data.write;
 
     struct LED_Driver_SM_Evt evt = {
             .sig = k_LED_Driver_SM_Evt_LED_Driver_Write,
@@ -223,7 +229,7 @@ static void on_midi_write_ready(struct UART_Evt *p_evt)
 {
     assert(p_evt->sig == k_UART_Evt_Sig_Write_Ready);
 
-    struct UART_SM_Evt_Sig_Write_MIDI * p_write = &p_evt->data.midi_write; 
+    struct UART_SM_Evt_Sig_Write_MIDI * p_write = (struct UART_SM_Evt_Sig_Write_MIDI *) &p_evt->data.midi_write; 
 
     struct UART_SM_Evt evt = {
             .sig = k_UART_SM_Evt_Sig_Write_MIDI,
@@ -306,7 +312,7 @@ static void on_midi_write_ready(struct UART_Evt *p_evt)
     wait_on_instance_initialized();
 
     static struct UART_Listener uart_rx_lsnr;
-    struct Sequencer_Listener_Cfg uart_rx_lsnr_cfg = {
+    struct UART_Listener_Cfg uart_rx_lsnr_cfg = {
         .p_inst = &uart_inst,
         .p_lsnr = &uart_rx_lsnr, 
         .sig     = k_UART_Evt_Sig_RX_Ready,

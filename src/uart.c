@@ -363,8 +363,7 @@ static void convert_voltage_to_midi(struct UART_Instance * p_inst,
     float sf = get_midi_voltage_scaling_factor(); 
     float midi_voltage = get_midi_scaled_voltage(new_value); 
 
-    // need to know which array element to populate. adjust arguments. 
-    /* p_inst.midi.note[step] = (uint8_t)midi_voltage */
+    p_inst->midi.note[step] = (uint8_t)midi_voltage; 
 
 }; 
 
@@ -508,8 +507,9 @@ static void broadcast_uart_ready(
 
     struct UART_Evt evt = {
             .sig = k_UART_Evt_Sig_RX_Ready,
-            .data.midi_command.bytes = bytes
     };
+
+    memcpy(evt.data.midi_command.bytes, bytes, 3);
 
     broadcast_event_to_listeners(p_inst, &evt);
 
@@ -553,12 +553,12 @@ static bool find_list_containing_listener_and_remove_listener(
 }
 #endif
 
-static bool signal_has_listeners(
-        struct UART_Instance * p_inst,
-        enum UART_Evt_Sig      sig)
-{
-    return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
-}
+// static bool signal_has_listeners(
+//         struct UART_Instance * p_inst,
+//         enum UART_Evt_Sig      sig)
+// {
+//     return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
+// }
 
 /* **************
  * Event Queueing

@@ -466,12 +466,12 @@ static bool find_list_containing_listener_and_remove_listener(
 }
 #endif
 
-static bool signal_has_listeners(
-        struct Pot_Instance * p_inst,
-        enum Pot_Evt_Sig      sig)
-{
-    return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
-}
+// static bool signal_has_listeners(
+//         struct Pot_Instance * p_inst,
+//         enum Pot_Evt_Sig      sig)
+// {
+//     return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
+// }
 
 /* **************
  * Event Queueing
@@ -770,9 +770,9 @@ static void state_run_run(void * o)
             
             advance_adc_mux(next_pot(p_convert->id)); 
             
-            uint16_t filtered_reading = adc_filter_pot(&p_inst, p_convert->id, val);  
+            uint16_t filtered_reading = adc_filter_pot(p_inst, p_convert->id, val);  
 
-            if (did_pot_change(&p_inst, p_convert->id, filtered_reading)) {
+            if (did_pot_change(p_inst, p_convert->id, filtered_reading)) {
                 /* Since ADC values aren't yet filtered, this is firing too often and getting stuck in the q_sm_event assertion. 
                 Earlier, there also seemed to be an issue there when we want to broadcast an event? The CB function seemed to get lost. */                       
                 // broadcast_pot_changed(&p_inst, p_convert->id, filtered_reading); 
