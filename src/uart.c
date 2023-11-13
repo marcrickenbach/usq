@@ -267,23 +267,11 @@ static void init_dma_device(struct UART_Instance * p_inst)
 {
     int ret; 
 
-    struct dma_block_config dma_block_cfg = {
+    struct dma_block_config dma_block_tx_cfg = {
         .block_size = 3,
         .dest_address = (uint32_t)&USART1->DR,
         .source_address = (uint32_t)midi_pkg
     }; 
-
-    // Configure DMA 2 Stream 2 / RX
-    // struct dma_config dma__stream_2_cfg = { 
-    //     // .complete_callback_en = NULL,
-    //     .channel_direction = MEMORY_TO_PERIPHERAL,
-    //     .source_data_size = DMA_PDATAALIGN_BYTE,
-    //     // .cyclic = 1
-    // };
-
-    // ret = dma_config(dma2_dev, DMA_CHANNEL_2, &dma__stream_2_cfg); 
-    // __ASSERT(ret == 0, "Failed to configure DMA_2_Stream_2"); 
-
 
     // Configure DMA 2 Stream 7 / TX
     struct dma_config dma__stream_7_cfg = { 
@@ -292,7 +280,7 @@ static void init_dma_device(struct UART_Instance * p_inst)
         .channel_direction = MEMORY_TO_PERIPHERAL,
         .source_data_size = 1,
         .dest_data_size = 1,
-        .head_block = &dma_block_cfg
+        .head_block = &dma_block_tx_cfg
     };
 
     ret = dma_config(dma2_dev, 7, &dma__stream_7_cfg); 
@@ -313,14 +301,14 @@ static void init_uart_device(struct UART_Instance * p_inst)
         .parity = UART_CFG_PARITY_NONE,
         .stop_bits = UART_CFG_STOP_BITS_1,
         .data_bits = UART_CFG_DATA_BITS_8,
-        .flow_ctrl = UART_CFG_FLOW_CTRL_NONE
+        .flow_ctrl = UART_CFG_FLOW_CTRL_NONE,
     };
 
     err = uart_configure(uart_dev, &cfg); 
     __ASSERT(err == 0, "Failed to configure UART"); 
 
-    // err = uart_rx_enable(uart_dev, rx_buf, sizeof(rx_buf), 100);
-    // __ASSERT(err == 0, "Failed to enable UART RX"); 
+    err = uart_rx_enable(uart_dev, rx_buf, sizeof(rx_buf), 100);
+    __ASSERT(err == 0, "Failed to enable UART RX"); 
 
     err = uart_callback_set(uart_dev, uart_callback, NULL);
     __ASSERT(err == 0, "Failed to set UART callback"); 
