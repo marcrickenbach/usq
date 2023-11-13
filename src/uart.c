@@ -258,11 +258,6 @@ void uart_callback(const struct device *dev, struct uart_event *evt, void *user_
 }
 
 
-static void init_dma_block(struct UART_Instance * p_inst)
-{
-
-}
-
 static void init_dma_device(struct UART_Instance * p_inst)
 {
     int ret; 
