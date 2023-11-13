@@ -37,6 +37,7 @@ enum Sequencer_SM_Evt_Sig{
     k_Seq_SM_Evt_Timer_Elapsed,
     k_Seq_SM_Evt_Sig_Pot_Value_Changed,
     k_Seq_SM_Evt_Sig_Btn_Status_Changed,
+    k_Seq_SM_Evt_Sig_UART_RX_Received,
 
     k_Seq_SM_Evt_Sig_End,                           // Exclusive
     k_Seq_SM_Evt_Sig_Max = k_Seq_SM_Evt_Sig_End - 1,// Inclusive
@@ -70,7 +71,11 @@ struct Sequencer_SM_Evt_Sig_Btn_Status_Changed{
     // need btnID in here
 };
 
-
+/* Data signal k_Seq_SM_Evt_Sig_UART_RX_Received can generate. */
+struct Sequencer_SM_Evt_Sig_UART_RX_RECEIVED{
+    enum Sequencer_Id id;
+    uint8_t bytes[3]; 
+};
 
 
 /* Events (i.e. signal + signal's data if any) Seq State Machine generates. */
@@ -81,6 +86,7 @@ struct Sequencer_SM_Evt{
         struct Sequencer_SM_Evt_Sig_Timer_Elapsed        stepped;
         struct Sequencer_SM_Evt_Sig_Pot_Value_Changed    pot_changed;
         struct Sequencer_SM_Evt_Sig_Btn_Status_Changed   btn_changed;
+        struct Sequencer_SM_Evt_Sig_UART_RX_RECEIVED     midi_cmd; 
 	}data;
 };
 

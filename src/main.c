@@ -195,6 +195,16 @@ static void on_pot_changed(struct Pot_Evt *p_evt)
     }
 }
 
+static void on_uart_rx_ready(struct UART_Evt * p_evt) 
+{
+    assert(p_evt->sig == k_UART_Evt_Sig_RX_Ready);
+
+    struct Sequencer_SM_Evt evt = {
+        .sig = k_Seq_SM_Evt_Sig_UART_RX_Received
+    };
+
+}
+
 static void on_led_write_ready(struct LED_Driver_Evt *p_evt) 
 {
     assert(p_evt->sig == k_LED_Driver_Evt_Sig_Write_Ready);
@@ -294,6 +304,15 @@ static void on_midi_write_ready(struct UART_Evt *p_evt)
     };
     UART_Init_Instance(&uart_inst_cfg);
     wait_on_instance_initialized();
+
+    static struct UART_Listener uart_rx_lsnr;
+    struct Sequencer_Listener_Cfg uart_rx_lsnr_cfg = {
+        .p_inst = &uart_inst,
+        .p_lsnr = &uart_rx_lsnr, 
+        .sig     = k_UART_Evt_Sig_RX_Ready,
+        .cb      = on_uart_rx_ready
+    };
+    UART_Add_Listener(&uart_rx_lsnr_cfg);
 
 
     /* Instance: Sequencer */

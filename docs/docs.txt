@@ -67,6 +67,7 @@
 |                   Send functions will be called from State Machine state.
 |                   Store MIDI note data in this object (instance->midi.note[16]). We update this array only on voltage pot change.
 |                   TODO: handle RX events to send back to Sequencer [?]
+|                   Added RX and Listener for ready data that broadcasts to Sequencer. 
 |                   
 |       NOTES:      ?   : currently, all midi calculations are done in UART thread.
 |                   ?   : Should I make a separate pot change listener for this thread or is it ok to handle queuing that event int he current one? 

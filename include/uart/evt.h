@@ -35,6 +35,7 @@ enum UART_Evt_Sig{
     #endif
     k_UART_Evt_Sig_Changed, // Value changed
     k_UART_Evt_Sig_Write_Ready,
+    k_UART_Evt_Sig_RX_Ready,
 
     k_UART_Evt_Sig_End,                        // Exclusive
     k_UART_Evt_Sig_Max = k_UART_Evt_Sig_End - 1,// Inclusive
@@ -70,12 +71,18 @@ struct UART_Evt_Data_Changed{
     uint16_t val; 
 };
 
+/* Data signal k_UART_Evt_Sig_RX_Ready can generate. */
+struct UART_Evt_UART_RX_Ready{
+    uint8_t bytes[3]; 
+};
+
 /* Events (i.e. signal + signal's data if any) that can be generated. */
 struct UART_Evt{
 	enum UART_Evt_Sig sig;
 	union UART_Evt_Data{
-        struct UART_Evt_Data_Instance_Initialized    initd;
-        struct UART_Evt_Data_Write_MIDI              midi_write;
+        struct UART_Evt_Data_Instance_Initialized   initd;
+        struct UART_Evt_Data_Write_MIDI             midi_write;
+        struct UART_Evt_UART_RX_Ready               midi_command;
 	}data;
 };
 

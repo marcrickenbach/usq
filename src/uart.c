@@ -240,15 +240,30 @@ static void init_instance(struct UART_Instance * p_inst)
     #endif
 }
 
+/* forward declaration */ 
+static void broadcast_uart_ready( struct UART_Instance * p_inst, uint8_t bytes[3]); 
+
 void uart_callback(const struct device *dev, struct uart_event *evt, void *user_data)
 {
+
+    struct UART_Instance * p_inst = (struct UART_Instance *)user_data;
+
     switch (evt->type) {
         default: break;
         case UART_TX_DONE:
-
+            // don't need anything here
             break;
         case UART_RX_RDY:
+            
+            uint8_t midi_bytes[3] = {
+                rx_buf[0],
+                rx_buf[1],
+                rx_buf[2]
+            };
 
+            broadcast_uart_ready(p_inst, midi_bytes);
+
+            memset(rx_buf, 0, sizeof(rx_buf));  
             break;
         case UART_TX_ABORTED:
             printk("UART TX ABORTED\n");
@@ -305,7 +320,7 @@ static void init_uart_device(struct UART_Instance * p_inst)
     err = uart_rx_enable(uart_dev, rx_buf, sizeof(rx_buf), 100);
     __ASSERT(err == 0, "Failed to enable UART RX"); 
 
-    err = uart_callback_set(uart_dev, uart_callback, NULL);
+    err = uart_callback_set(uart_dev, uart_callback, p_inst);
     __ASSERT(err == 0, "Failed to set UART callback"); 
 
 }
@@ -485,6 +500,20 @@ static void broadcast_interface_deinitialized(
 }
 #endif
 
+
+static void broadcast_uart_ready(
+        struct UART_Instance    *   p_inst,
+        uint8_t                     bytes[3])
+{
+
+    struct UART_Evt evt = {
+            .sig = k_UART_Evt_Sig_RX_Ready,
+            .data.midi_command.bytes = bytes
+    };
+
+    broadcast_event_to_listeners(p_inst, &evt);
+
+}
 
 /* **************
  * Listener Utils
