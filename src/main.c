@@ -200,16 +200,17 @@ static void on_uart_rx_ready(struct UART_Evt * p_evt)
 {
     assert(p_evt->sig == k_UART_Evt_Sig_RX_Ready);
 
-    uint8_t bytes[3] = {0};
+    uint8_t midi_data[3] = {0};
 
     struct Sequencer_SM_Evt evt = {
         .sig = k_Seq_SM_Evt_Sig_UART_RX_Received
     };
 
-    memcpy(evt.data.midi_cmd.bytes, bytes, 3);
+    memcpy(evt.data.midi_cmd.bytes, midi_data, 3);
 
     k_msgq_put(&sequencer_sm_evt_q, &evt, K_NO_WAIT); 
 }
+
 
 static void on_led_write_ready(struct LED_Driver_Evt *p_evt) 
 {
