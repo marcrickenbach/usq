@@ -246,7 +246,7 @@ static void on_midi_write_ready(struct UART_Evt *p_evt)
  * Public.
  */
 
- int main (void) {
+   int main (void) {
     // /* Instance: Pot */
     struct Pot_Instance_Cfg pot_inst_cfg = {
         .p_inst = &pot_inst,

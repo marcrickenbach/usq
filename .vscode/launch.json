@@ -34,7 +34,7 @@
 				//"monitor reset",
 			],
             "runToEntryPoint": "main",
-			//"breakAfterReset": false,
+			//"breakAfterReset": false,f
             // "svdFile": "${workspaceFolder:project}/boards/imxrt1062.svd",
             // NOTE: comment out "rtos" when debugging prior to OS running
             // because it seems to cause VSCode to disconnect from the debugger

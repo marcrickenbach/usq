@@ -631,10 +631,24 @@ static void advance_adc_mux (enum Pot_Id id)
 
 
 
-static uint16_t adc_filter_pot (struct Pot_Instance * p_inst, enum Pot_Id id, uint32_t val) 
+static uint16_t adc_filter_pot (struct Pot_Instance * p_inst, enum Pot_Id id, uint16_t val)
 {
-    return val; 
+
+    #define a0 0.5
+    #define a1 0.5
+    #define b1 0.2
+
+    float input = (float)val / 4095;
+    static float past_input[k_Pot_Id_Cnt] = {0.00}, past_output[k_Pot_Id_Cnt] = {0.00}; 
+    float output = a0 * input + a1 * past_input[id] - b1 * past_output[id]; 
+
+    past_input[id] = input; 
+    past_output[id] = output; 
+
+    uint16_t test = output * 4095; 
+    return test; 
 };
+
 
 
 static bool did_pot_change (struct Pot_Instance * p_inst, enum Pot_Id id, uint16_t val) 
