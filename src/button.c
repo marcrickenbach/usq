@@ -13,7 +13,8 @@
 #include "button.h"
 
 #include <zephyr/smf.h>
-#include <zephyr/drivers/dac.h>
+
+#include <zephyr/drivers/gpio.h>
 
 #include <assert.h>
 
@@ -30,7 +31,7 @@
 #define OVERRIDE    true
 #define NO_OVERRIDE false
 
-
+#define BUTTON_PINS     DT_PATH(zephyr_user)
 
 /* *****************************************************************************
  * Debugging
@@ -53,6 +54,8 @@ static struct button_module_data button_md = {0};
 /* Convenience accessor to keep name short: md - module data. */
 #define md button_md
 
+const struct gpio_dt_spec button_input  = GPIO_DT_SPEC_GET(BUTTON_PINS, sw_input_gpios); 
+struct gpio_callback button_pressed_gpio_cb;
 
 /* *****************************************************************************
  * Private
@@ -161,7 +164,35 @@ static void config_instance_queues(
 }
 
 /* Forward reference */
+
+static void on_button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
  
+static void button_gpio_init(struct Button_Instance * p_inst) {
+
+       if (   !gpio_is_ready_dt(&button_input)) { 
+              printk("Button Mux Pin: FAIL\n");
+       } else {
+              printk("Button Mux Pin: OK\n"); 
+       }
+       
+       gpio_pin_configure_dt(&button_input, GPIO_INPUT);
+    
+       gpio_pin_interrupt_configure_dt(&button_input, GPIO_INT_EDGE_TO_ACTIVE);
+
+       gpio_init_callback(&button_pressed_gpio_cb, on_button_pressed, BIT(button_input.pin));
+
+       gpio_add_callback(button_input.port, &button_pressed_gpio_cb);
+}
+
+
+static void config_instance_deferred(
+        struct Pot_Instance     * p_inst,
+        struct Pot_Instance_Cfg * p_cfg)
+{
+
+    button_gpio_init(p_inst);
+
+}
 
 /* Since configuration starts on caller's thread, configure fields that require
  * immediate and/or inconsequential configuration and defer rest to be handled
@@ -375,6 +406,12 @@ static void q_init_instance_event(struct Button_Instance_Cfg * p_cfg)
 }
 
 
+static void on_button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
+    printk("Button Pressed\n");
+}
+
+
+
 /* **********
  * FSM States
  * **********/
@@ -458,6 +495,7 @@ static void state_init_run(void * o)
      * Init_Instance event the data contains the intance cfg. */
     struct Button_SM_Evt_Sig_Init_Instance * p_ii = &p_evt->data.init_inst;
 
+    // config_instance_deferred(p_inst, &p_ii->cfg);
     broadcast_instance_initialized(p_inst, p_ii->cfg.cb);
 
     smf_set_state(SMF_CTX(p_sm), &states[run]);

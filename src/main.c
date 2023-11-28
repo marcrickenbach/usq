@@ -173,7 +173,7 @@ static void on_uart_instance_initialized(struct UART_Evt *p_evt)
 static void on_button_instance_initialized(struct Button_Evt *p_evt)
 {
     assert(p_evt->sig == k_Button_Evt_Sig_Instance_Initialized);
-    assert(p_evt->data.initd.p_inst == &uart_inst);
+    assert(p_evt->data.initd.p_inst == &button_inst);
 	k_event_post(&events, EVT_FLAG_INSTANCE_INITIALIZED);
 }
 
@@ -263,7 +263,11 @@ static void on_midi_write_ready(struct UART_Evt *p_evt)
 
 static void on_button_press (struct Button_Evt *p_evt) 
 {
-    assert(p_evt->sig == k_Button_Evt_Sig_Pressed);
+    // assert(p_evt->sig == k_Button_Evt_Sig_Pressed);
+
+    /* queue sm event with button data */
+
+
 }
 
 
@@ -350,9 +354,9 @@ static void on_button_press (struct Button_Evt *p_evt)
 
      /* Instance: Button Module */
     struct Button_Instance_Cfg button_inst_cfg = {
-        .p_inst = &uart_inst,
-        .task.sm.p_thread = &uart_thread,
-        .task.sm.p_stack = uart_thread_stack,
+        .p_inst = &button_inst,
+        .task.sm.p_thread = &button_thread,
+        .task.sm.p_stack = button_thread_stack,
         .task.sm.stack_sz = K_THREAD_STACK_SIZEOF(button_thread_stack),
         .task.sm.prio = K_LOWEST_APPLICATION_THREAD_PRIO,
         .msgq.p_sm_evts = &button_sm_evt_q,
@@ -384,6 +388,7 @@ static void on_button_press (struct Button_Evt *p_evt)
     Sequencer_Init_Instance(&sequencer_inst_cfg);
     wait_on_instance_initialized();
     
+
     static struct Sequencer_Listener led_write_lsnr;
     struct Sequencer_Listener_Cfg led_write_lsnr_cfg = {
         .p_inst = &sequencer_inst,
@@ -392,6 +397,7 @@ static void on_button_press (struct Button_Evt *p_evt)
         .cb      = on_led_write_ready
     };
     Sequencer_Add_Listener(&led_write_lsnr_cfg);
+
 
     static struct Sequencer_Listener midi_write_lsnr;
     struct Sequencer_Listener_Cfg midi_write_lsnr_cfg = {
