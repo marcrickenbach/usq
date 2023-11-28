@@ -365,15 +365,6 @@ static void on_button_press (struct Button_Evt *p_evt)
     Button_Init_Instance(&button_inst_cfg);
     wait_on_instance_initialized();
 
-    static struct Button_Listener button_press_lsnr;
-    struct Button_Listener_Cfg button_lsnr_cfg = {
-        .p_inst = &button_inst,
-        .p_lsnr = &button_press_lsnr, 
-        .sig     = k_Button_Evt_Sig_Pressed,
-        .cb      = on_button_press
-    };
-    Button_Add_Listener(&button_lsnr_cfg);
-
 
     /* Instance: Sequencer */
     struct Sequencer_Instance_Cfg sequencer_inst_cfg = {
