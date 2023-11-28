@@ -14,6 +14,7 @@ project(usq_zrtos)
 
 # Explicitly list source files
 set(app_sources
+    src/button.c
     src/dac.c
     src/uart.c
     src/led_driver.c
