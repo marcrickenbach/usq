@@ -5,14 +5,11 @@
  *
 */
 
-
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/adc.h>
 #include <assert.h>
-#include "thread_init.h"
 #include "gpio_config.h"
-#include "configurations.h"
 
 K_THREAD_STACK_DEFINE(gpio_config_stack, GPIO_CONFIG_STACK_SIZE);
 
@@ -46,16 +43,6 @@ const struct gpio_dt_spec adc_bank_4 = GPIO_DT_SPEC_GET(GPIO_PINS, adc_addr_bank
 const struct gpio_dt_spec sw_bank_0 = GPIO_DT_SPEC_GET(GPIO_PINS, sw_addr_bank_0_gpios); 
 const struct gpio_dt_spec sw_bank_1 = GPIO_DT_SPEC_GET(GPIO_PINS, sw_addr_bank_1_gpios); 
  
-
-struct A_Object gpio_config_task;
-
-struct A_Object_Cfg gpio_config_task_cfg = {
-    .p_stack = gpio_config_stack,
-    .stack_size = GPIO_CONFIG_STACK_SIZE,
-    .prio = INIT_PRIORITY,
-    .opts = 0,
-    .cb = gpio_config_thread
-}; 
 
 
 void gpio_config_thread (void * p1, void * p2, void * p3) {
