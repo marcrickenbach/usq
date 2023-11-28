@@ -10,12 +10,8 @@
 #include <zephyr/drivers/gpio.h>
 #include <assert.h>
 #include <zephyr/smf.h>
-#include "trigger.h"
 #include "main.h"
-#include "gate.h"
-#include "sequencers.h"
-#include "thread_init.h"
-#include "configurations.h"
+
 
 /* Configure our Play/Pause Triggers and Mode Select Button */
 
