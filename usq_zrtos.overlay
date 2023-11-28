@@ -35,6 +35,8 @@
         sw-addr-bank-0-gpios =  <&gpioc 0 GPIO_ACTIVE_LOW>;
         sw-addr-bank-1-gpios =  <&gpioc 1 GPIO_ACTIVE_LOW>;
 
+        sw-input-gpios = <&gpioa 1 GPIO_PULL_UP>;
+
         pp-trigger-high-gpios = <&gpiob 6 GPIO_PULL_DOWN>;
         rst-trigger-high-gpios = <&gpiob 7 GPIO_PULL_DOWN>;
         pp-trigger-low-gpios = <&gpiob 9 GPIO_PULL_DOWN>;
