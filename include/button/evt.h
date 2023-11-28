@@ -33,8 +33,9 @@ enum Button_Evt_Sig{
     #if CONFIG_FKMG_Button_SHUTDOWN_ENABLED
     k_Button_Evt_Sig_Instance_Deinitialized,
     #endif
-    k_Button_Evt_Sig_TimerUp,                    //
-    k_Button_Evt_Sig_Write,                      //
+    k_Button_Evt_Sig_Pressed,                       //
+    k_Button_Evt_Sig_Released,                      //
+    k_Button_Evt_Sig_Debounced,                     // 
          
 
     k_Button_Evt_Sig_End,                        // Exclusive

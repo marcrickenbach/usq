@@ -487,13 +487,12 @@ static void state_run_run(void * o)
             /* Should never occur. */
             assert(false);
             break;
-        case k_Button_Evt_Sig_Write:
-            // struct DAC_SM_Evt_Sig_Convert * p_convert = &p_evt->data.convert;
+        case k_Button_SM_Evt_Sig_Pressed:
             #if 0 /* Pseudo code: */
 
             #endif
             break;
-        #if CONFIG_FKMG_DAC_SHUTDOWN_ENABLED
+        #if CONFIG_FKMG_BUTTON_SHUTDOWN_ENABLED
         case k_Button_Evt_Sig_Instance_Deinitialized:
             assert(false);
             break;

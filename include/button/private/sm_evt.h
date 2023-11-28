@@ -32,7 +32,9 @@ enum Button_SM_Evt_Sig{
     #if CONFIG_FKMG_DAC_ALLOW_SHUTDOWN
 	k_Button_SM_Evt_Sig_Deinit_Instance,
     #endif
-	k_Button_SM_Evt_Sig_XXX,
+	k_Button_SM_Evt_Sig_Pressed,
+    k_Button_SM_Evt_Sig_Released,
+    k_Button_SM_Evt_Sig_Debunced,
 
     k_Button_SM_Evt_Sig_End,                           // Exclusive
     k_Button_SM_Evt_Sig_Max = k_Button_SM_Evt_Sig_End - 1,// Inclusive
