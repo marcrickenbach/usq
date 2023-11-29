@@ -17,6 +17,7 @@
 
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/spi.h>
 
 #include <assert.h>
 
@@ -34,6 +35,8 @@
 
 #define OVERRIDE    true
 #define NO_OVERRIDE false
+
+#define SPI2_NODE       DT_NODELABEL(spi2)
 
 
 /* *****************************************************************************
@@ -57,6 +60,7 @@ static struct LED_Driver_module_data led_driver_md = {0};
 /* Convenience accessor to keep name short: md - module data. */
 #define md led_driver_md
 
+const struct device * spi_dev = DEVICE_DT_GET(SPI2_NODE);
 
 /* *****************************************************************************
  * Private
@@ -204,6 +208,14 @@ static void init_instance(struct LED_Driver_Instance * p_inst)
     p_inst->err = k_LED_Driver_Err_Id_None;
     #endif
 }
+
+
+static void spi_peripheral_init(struct LED_Driver_Instance * p_inst) 
+{
+    int ret = device_is_ready(spi_dev); 
+    assert(ret == true);
+}
+
 
 
 /* ************
