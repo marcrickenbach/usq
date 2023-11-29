@@ -55,7 +55,8 @@ static struct button_module_data button_md = {0};
 #define md button_md
 
 const struct gpio_dt_spec button_input  = GPIO_DT_SPEC_GET(BUTTON_PINS, sw_input_gpios); 
-struct gpio_callback button_pressed_gpio_cb;
+
+
 
 /* *****************************************************************************
  * Private
@@ -83,7 +84,10 @@ static struct Button_Instance * sm_ctx_to_instance(struct smf_ctx * p_sm_ctx)
     return(NULL);
 }
 
-
+static enum Button_Id next_button(enum Button_Id id)
+{
+    return((id + 1) % k_Button_Id_Cnt);
+}
 
 /* **************
  * Listener Utils
@@ -174,8 +178,8 @@ static void button_gpio_init(struct Button_Instance * p_inst) {
     
     gpio_pin_configure_dt(&button_input, GPIO_INPUT);
     gpio_pin_interrupt_configure_dt(&button_input, GPIO_INT_EDGE_TO_ACTIVE);
-    gpio_init_callback(&button_pressed_gpio_cb, on_button_pressed, BIT(button_input.pin));
-    gpio_add_callback(button_input.port, &button_pressed_gpio_cb);
+    gpio_init_callback(&p_inst->button_pressed_gpio_cb, on_button_pressed, BIT(button_input.pin));
+    gpio_add_callback(button_input.port, &p_inst->button_pressed_gpio_cb);
 }
 
 
@@ -379,8 +383,7 @@ static bool signal_has_listeners(
  * Event Queueing
  * **************/
 
-static void q_sm_event(
-        struct Button_Instance * p_inst, struct Button_SM_Evt * p_evt)
+static void q_sm_event(struct Button_Instance * p_inst, struct Button_SM_Evt * p_evt)
 {
     bool queued = k_msgq_put(p_inst->msgq.p_sm_evts, p_evt, K_NO_WAIT) == 0;
 
@@ -400,7 +403,18 @@ static void q_init_instance_event(struct Button_Instance_Cfg * p_cfg)
 
 static void on_button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
     printk("Button Pressed\n");
+
+    struct Button_Instance * p_inst = CONTAINER_OF(cb, struct Button_Instance, button_pressed_gpio_cb);
+
+    struct Button_SM_Evt evt = {
+        .sig = k_Button_SM_Evt_Sig_Pressed,
+    }; 
+
+    q_sm_event(p_inst, &evt);
+    // Queue event to read the i/o expander over i2c and begin debounce process. When that is done we update whatever information we need to take care of. 
+
 }
+
 
 
 
@@ -517,6 +531,19 @@ static void state_run_run(void * o)
             break;
         case k_Button_SM_Evt_Sig_Pressed:
             #if 0 /* Pseudo code: */
+
+            Read the i/o expander via i2c.
+            Start a timer to debounce the button.
+            When the timer expires, read the i/o expander again.
+            If the button is still pressed, then we can assume it is a valid press.
+            Keep the debounce delay short. Hardware already has a debounce circuit.
+
+            #endif
+            break;
+        case k_Button_SM_Evt_Sig_Released:
+            #if 0 /* Pseudo code: */
+
+            If there's anything we need to take care of on button release we can do it here. 
 
             #endif
             break;

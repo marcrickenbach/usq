@@ -49,14 +49,11 @@ struct Button_SM_Evt_Sig_Init_Instance{
     struct Button_Instance_Cfg cfg;
 };
 
-/* Data signal k_DAC_SM_Sig_XXX can generate. */
-struct Button_SM_Evt_Sig_Convert{
-    enum Button_Id id;
+/* Data signal k_Button_SM_Evt_Sig_Pressed can generate. */
+struct Button_SM_Evt_Sig_Pressed{
+
 };
 
-struct Button_SM_Evt_Sig_Force_Change{
-    enum Button_Id id;
-};
 
 
 /* Events (i.e. signal + signal's data if any) DAC State Machine generates. */
@@ -64,8 +61,7 @@ struct Button_SM_Evt{
 	enum Button_SM_Evt_Sig sig;
 	union Button_SM_Evt_Data{
         struct Button_SM_Evt_Sig_Init_Instance  init_inst;
-        struct Button_SM_Evt_Sig_Convert        convert;
-        struct Button_SM_Evt_Sig_Force_Change   force_change;
+        struct Button_SM_Evt_Sig_Pressed        pressed;
 	}data;
 };
 

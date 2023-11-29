@@ -20,6 +20,7 @@ extern "C" {
 
 #include <zephyr/kernel.h>
 #include <zephyr/smf.h>
+#include <zephyr/drivers/gpio.h>
 
 #include "err.h"
 #include "evt.h"
@@ -70,6 +71,9 @@ struct Button_Instance{
 
     /* Current Channel. */
     enum Button_Id id;
+
+    /* GPIO Interrupt Callback*/
+    struct gpio_callback button_pressed_gpio_cb;
 };
 
 #ifdef __cplusplus
