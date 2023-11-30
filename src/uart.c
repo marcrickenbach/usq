@@ -709,9 +709,8 @@ static void state_run_run(void * o)
             uint8_t midi_note = get_midi_note(p_inst, midi->id, midi->seq, midi->step, midi->offset);
 
             int ret = transmit_midi_package_to_uart(p_inst, midi->midi_status, midi_note, midi->ctrl_byte); 
-            if ( ret != 0) {
-                printk("ERROR TX %d\n", ret);
-            }; 
+            assert(ret == 0);
+            
             break;
         case k_UART_SM_Evt_Sig_Changed:
             struct UART_SM_Evt_Sig_Changed *midi_changed = &p_evt->data.changed; 
