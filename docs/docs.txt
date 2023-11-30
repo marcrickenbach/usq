@@ -11,6 +11,7 @@
 |                   -- Sequencer sends MIDI information to UART Thread. Note: this isn't working yet, I think it has something to do with the nucleo board device tree, but am not certain.
 |               On receiving a pot change event from the Pot module, we post new value to the instance struct keeping track of all our sequencer data. 
 |               I've also sketched up a function that would check to see if any of the pots are associated with a currently active step, in which case we would take care of new dac and gate messages.
+|               Added transport interupts (play/pause/reset). 
 |
 |   NOTES:
 |               note: seq struct to instance that holds all of both channels information. 
