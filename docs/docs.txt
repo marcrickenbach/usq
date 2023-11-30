@@ -10,7 +10,7 @@
 |                   -- event Timer X/Y up: we set dac value via public api, set channel gate (just toggles a gpio), send message to UI thread for LEDs.
 |                   -- Sequencer sends MIDI information to UART Thread. Note: this isn't working yet, I think it has something to do with the nucleo board device tree, but am not certain.
 |               On receiving a pot change event from the Pot module, we post new value to the instance struct keeping track of all our sequencer data. 
-|               I've also sketched up a function that would check to see if any of the pots are associated with a currently active step, in which case we would take care of new dac and gate messages. 
+|               I've also sketched up a function that would check to see if any of the pots are associated with a currently active step, in which case we would take care of new dac and gate messages.
 |
 |   NOTES:
 |               note: seq struct to instance that holds all of both channels information. 
@@ -78,27 +78,30 @@
 |
 |
 |
-|
-|   TODO:
-|
-| -	///////////////////////////////////////
-|	// GPIO Thread
-|	///////////////////////////////////////
-|   Handles all GPIO inits. 
-|   Handles external GPIO interrupts (Play/Pause & Reset)
-|   Does this need it's own thread or would sequencer handle this? 
-|
-|
 |	///////////////////////////////////////
 | -	// Button Thread
 |	///////////////////////////////////////
-|   Handles all button events. 
-|   We have 16 led-buttons to handle here. 
-|   Will need a debounce. 
-|   Set up a listener to look for button presses (these are less time critical than play/pause interrupts)
-|       -- similar to pot thread: if a button press occurs:
-|           -- Send message to sequencer thread to change sequencer active step value accordingly.
-|   TODO: need to genericize. Will need to be similar to Pot thread as we'll be mux'ing here as well. 
+|       FUNCTION:   Handles all reading of incoming button presses and debounces. 
+|                   Once debounce is cleared, we broadcast an event to the listener which tells the sequencer.
+|                   Sequencer module handles all data from there, i.e. which steps to active, sequence length, etc. 
+|                   We have 16 led-buttons to handle here, they are all handled by an I/O expander. 
+|                   When a button is pressed the expander sends an interrupt, after which we read out the button registers via i2c.
+|
+|       NOTES:      note: debounce routine currently reads the expander register, stores that information and sets a timer.
+|                         on timer expiry, we re-read the registers. If nothing has changed we queue event to tell sequencer we're ready to change data. 
+|                   ?   : is it sufficient to compare entire registers on each press, or should we keep track of each bit within those registers? 
+|                   ?   : I have a hardware debounce circuit in place (RC) so I'm keeping the software debounce time low. That work?
+|                   ?   : Do I need to disable interrupts for subsequent 'presses'? Right now, errant presses will trigger interrupts. However, I don't want
+|                         to proclude any other presses occuring at the same time as another.
+|                   note: to genericize we can set up a map of buttons to pins on the expander. from there, I think most of it is covered?
+|
+|
+|
+|
+|
+|
+|
+|
 |
 |
 |
