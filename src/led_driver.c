@@ -62,6 +62,9 @@ static struct LED_Driver_module_data led_driver_md = {0};
 
 const struct device * spi_dev = DEVICE_DT_GET(SPI2_NODE);
 
+/* LED order corresponding to driver order */
+const uint8_t LED_ADDRESS[16] = {0, 1, 2, 3, 4, 5, 6, 7, 15, 14, 13, 12, 11, 10, 9, 8}; 
+
 /* *****************************************************************************
  * Private
  */
@@ -415,6 +418,57 @@ static void q_init_instance_event(struct LED_Driver_Instance_Cfg * p_cfg)
 }
 
 
+static uint16_t set_new_led_value_on_step(struct LED_Driver_Instance * p_inst, uint8_t step, uint8_t offset, uint8_t seq_id)
+{
+    uint16_t led_mask = 0; 
+    uint16_t current_led_value = p_inst->led_value.current;
+    uint16_t new_led_value = 0;
+
+    if (seq_id == 0) {
+        led_mask = (1U << LED_ADDRESS[step]);
+        if (offset == 0) {
+            new_led_value = current_led_value | led_mask;
+        } else {
+            uint16_t clear_bits = ~(uint16_t)(1U << LED_ADDRESS[offset]-1); 
+            new_led_value = current_led_value & clear_bits;
+            new_led_value = new_led_value | led_mask;
+        }
+    } else {
+        led_mask = (1U << LED_ADDRESS[step]);
+        uint16_t clear_bits = 0xFFFF << offset;
+        new_led_value = current_led_value & clear_bits;
+        new_led_value = new_led_value | led_mask;
+    }
+
+    p_inst->led_value.current = new_led_value;
+
+    return new_led_value; 
+}
+
+
+static void write_led_data_to_spi(struct LED_Driver_Instance * p_inst, uint16_t leds)
+{
+    struct spi_config spi_cfg = {
+        .frequency = 1000000,
+        .operation = SPI_WORD_SET(16) | SPI_TRANSFER_MSB | SPI_MODE_CPOL | SPI_MODE_CPHA,
+        .slave = 0,
+        .cs = NULL,
+    };
+
+    struct spi_buf tx_buf = {
+        .buf = &leds,
+        .len = sizeof(leds)
+    };
+
+    struct spi_buf_set tx = {
+        .buffers = &tx_buf,
+        .count = 1
+    };
+
+    int ret = spi_write(spi_dev, &spi_cfg, &tx);
+    assert(ret == 0);
+}
+
 
 
 /* **********
@@ -529,13 +583,11 @@ static void state_run_run(void * o)
             assert(false);
             break;
         case k_LED_Driver_SM_Evt_LED_Driver_Write:
-        #if 0
-        /* Pseudo code: */
-        
-        functions for preparing and sending led values via SPI
+            struct LED_Driver_SM_Evt_Sig_LED_Driver_Write * p_write = &p_evt->data.write; 
+            
+            uint16_t led_value = set_new_led_value_on_step(p_inst, p_write->step, p_write->offset, p_write->id);
+            write_led_data_to_spi(p_inst, led_value);
 
-        #endif
-           
              break;
         #if CONFIG_FKMG_LED_DRIVER_SHUTDOWN_ENABLED
         case k_LED_Driver_Evt_Sig_Instance_Deinitialized:

@@ -73,8 +73,12 @@ struct LED_Driver_Instance{
 
     /* Current Seq. */
     enum LED_Driver_Id id;
-};
 
+    /* LED Value State */
+    struct{
+        uint16_t current;
+    }led_value;
+};
 #ifdef __cplusplus
 }
 #endif

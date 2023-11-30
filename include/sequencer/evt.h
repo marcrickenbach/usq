@@ -79,6 +79,7 @@ struct Sequencer_Evt_Btn_Value_Changed{
 /* Data signal k_Seq_Evt_Sig_LED_Write_Ready can generate*/
 struct Sequencer_Evt_LED_Write_Ready{
     enum Sequencer_Id id;
+    uint8_t offset;
     uint16_t val; 
 };
 

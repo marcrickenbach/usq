@@ -52,6 +52,8 @@ struct LED_Driver_SM_Evt_Sig_Init_Instance{
 /* Data signal k_LED_Driver_SM_Evt_LED_Driver_Write can generate. */
 struct LED_Driver_SM_Evt_Sig_LED_Driver_Write{
     enum LED_Driver_Id id;
+    uint8_t step;
+    uint8_t offset;
     uint16_t val; 
 };
 

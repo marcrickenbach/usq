@@ -835,13 +835,10 @@ static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
 */
 static void set_ui_on_step (struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
 {
-    uint16_t ui_data = 0; 
-
-    ui_data |= (1U << p_inst->seq.step[id]); 
-
     struct Sequencer_Evt_LED_Write_Ready evt_cfg = {
         .id = id,
-        .val = ui_data
+        .offset = p_inst->seq.offset,
+        .val = p_inst->seq.step[id]
     }; 
 
     struct Sequencer_Evt evt = {
