@@ -91,7 +91,7 @@
 |                         on timer expiry, we re-read the registers. If nothing has changed we queue event to tell sequencer we're ready to change data. 
 |                   ?   : is it sufficient to compare entire registers on each press, or should we keep track of each bit within those registers? 
 |                   ?   : I have a hardware debounce circuit in place (RC) so I'm keeping the software debounce time low. That work?
-|                   ?   : Do I need to disable interrupts for subsequent 'presses'? Right now, errant presses will trigger interrupts. However, I don't want
+|                   note: I disabled interrupts during debounce to avoid errant 'presses' from triggering interrupts. However, I don't want
 |                         to proclude any other presses occuring at the same time as another.
 |                   note: to genericize we can set up a map of buttons to pins on the expander. from there, I think most of it is covered?
 |
