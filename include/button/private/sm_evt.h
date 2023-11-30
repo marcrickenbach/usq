@@ -34,7 +34,8 @@ enum Button_SM_Evt_Sig{
     #endif
 	k_Button_SM_Evt_Sig_Pressed,
     k_Button_SM_Evt_Sig_Released,
-    k_Button_SM_Evt_Sig_Debunced,
+    k_Button_SM_Evt_Sig_Do_Debounce,
+    k_Button_SM_Evt_Sig_Debounced,
 
     k_Button_SM_Evt_Sig_End,                           // Exclusive
     k_Button_SM_Evt_Sig_Max = k_Button_SM_Evt_Sig_End - 1,// Inclusive
@@ -55,6 +56,14 @@ struct Button_SM_Evt_Sig_Pressed{
 };
 
 
+/* Data signal k_Button_SM_Evt_Sig_Pressed can generate. */
+struct Button_SM_Evt_Sig_Debounced{
+    uint8_t portA_state;
+    uint8_t portB_state;
+};
+
+
+
 
 /* Events (i.e. signal + signal's data if any) DAC State Machine generates. */
 struct Button_SM_Evt{
@@ -62,6 +71,7 @@ struct Button_SM_Evt{
 	union Button_SM_Evt_Data{
         struct Button_SM_Evt_Sig_Init_Instance  init_inst;
         struct Button_SM_Evt_Sig_Pressed        pressed;
+        struct Button_SM_Evt_Sig_Debounced      debounced;
 	}data;
 };
 

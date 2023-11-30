@@ -74,6 +74,16 @@ struct Button_Instance{
 
     /* GPIO Interrupt Callback*/
     struct gpio_callback button_pressed_gpio_cb;
+
+    /* Debounce struct and timer*/
+    struct{
+        uint8_t portA_state;
+        uint8_t portB_state;
+    }debounce;
+
+    struct{
+        struct k_timer debounce;
+    }timer;
 };
 
 #ifdef __cplusplus

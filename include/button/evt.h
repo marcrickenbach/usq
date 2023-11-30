@@ -55,18 +55,19 @@ struct Button_Evt_Data_Instance_Initialized{
     struct Button_Instance * p_inst;
 };
 
-/* Data signal k_DAC_Evt_Sig_Changed can generate. */
-struct Button_Evt_Data_Timer_Up{
-    enum Button_Id id;
-    uint32_t    val;
+/* Data signal k_Button_Evt_Sig_Pressed can generate. */
+struct Button_Evt_Data_Pressed{
+    uint8_t portA_state;
+    uint8_t portB_state;
+    int64_t timestamp;
 };
 
 /* Events (i.e. signal + signal's data if any) that can be generated. */
 struct Button_Evt{
 	enum Button_Evt_Sig sig;
 	union Button_Evt_Data{
-        struct Button_Evt_Data_Instance_Initialized    initd;
-        struct Button_Evt_Data_Timer_Up                timup; 
+        struct Button_Evt_Data_Instance_Initialized     initd;
+        struct Button_Evt_Data_Pressed                  pressed; 
 	}data;
 };
 

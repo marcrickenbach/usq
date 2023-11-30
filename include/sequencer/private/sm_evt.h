@@ -36,8 +36,8 @@ enum Sequencer_SM_Evt_Sig{
     #endif
     k_Seq_SM_Evt_Timer_Elapsed,
     k_Seq_SM_Evt_Sig_Pot_Value_Changed,
-    k_Seq_SM_Evt_Sig_Btn_Status_Changed,
     k_Seq_SM_Evt_Sig_UART_RX_Received,
+    k_Seq_SM_Evt_Sig_Button_Pressed,
 
     k_Seq_SM_Evt_Sig_End,                           // Exclusive
     k_Seq_SM_Evt_Sig_Max = k_Seq_SM_Evt_Sig_End - 1,// Inclusive
@@ -65,16 +65,19 @@ struct Sequencer_SM_Evt_Sig_Pot_Value_Changed{
     uint32_t val; 
 };
 
-/* Data signal k_Seq_SM_Evt_Sig_Btn_Status_Changed can generate. */
-struct Sequencer_SM_Evt_Sig_Btn_Status_Changed{
-    enum Sequencer_Id id;
-    // need btnID in here
-};
 
 /* Data signal k_Seq_SM_Evt_Sig_UART_RX_Received can generate. */
 struct Sequencer_SM_Evt_Sig_UART_RX_RECEIVED{
     enum Sequencer_Id id;
     uint8_t bytes[3]; 
+};
+
+
+/* Data signal k_Seq_SM_Evt_Sig_Button_Pressed can generate. */
+struct Sequencer_SM_Evt_Sig_Button_Pressed{
+    uint8_t portA_state;
+    uint8_t portB_state;
+    int64_t timestamp;
 };
 
 
@@ -85,8 +88,8 @@ struct Sequencer_SM_Evt{
         struct Sequencer_SM_Evt_Sig_Init_Instance        init_inst;
         struct Sequencer_SM_Evt_Sig_Timer_Elapsed        stepped;
         struct Sequencer_SM_Evt_Sig_Pot_Value_Changed    pot_changed;
-        struct Sequencer_SM_Evt_Sig_Btn_Status_Changed   btn_changed;
         struct Sequencer_SM_Evt_Sig_UART_RX_RECEIVED     midi_cmd; 
+        struct Sequencer_SM_Evt_Sig_Button_Pressed       btn_pressed;
 	}data;
 };
 

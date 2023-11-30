@@ -938,8 +938,8 @@ static void state_run_run(void * o)
             check_current_step(p_inst, p_pot_changed->pot_id);
 
             break;
-        case k_Seq_SM_Evt_Sig_Btn_Status_Changed:
-            struct Sequencer_SM_Evt_Sig_Btn_Status_Changed * p_btn_changed = &p_evt->data.btn_changed; 
+        case k_Seq_SM_Evt_Sig_Button_Pressed:
+            struct Sequencer_SM_Evt_Sig_Button_Pressed * p_button = &p_evt->data.btn_pressed; 
             #if 0 /* Pseudo code: */
             Buttons in normal state tell us which steps are active. In this case, just update sequencer instance information with which steps are active. 
             Later we will deal with the mode button which, when held, will put us in another state to edit the length of our sequences. 

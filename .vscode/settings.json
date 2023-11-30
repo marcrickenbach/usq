@@ -50,6 +50,8 @@
         "listener_cb.h": "c",
         "toolchain.h": "c",
         "uart.h": "c",
-        "dma_stm32.h": "c"
+        "dma_stm32.h": "c",
+        "*.tcc": "c",
+        "istream": "c"
     },
 }

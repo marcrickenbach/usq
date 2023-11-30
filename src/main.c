@@ -100,7 +100,7 @@ static struct UART_Instance uart_inst;
 static struct k_thread button_thread;
 #define BUTTON_THREAD_STACK_SZ_BYTES   512
 K_THREAD_STACK_DEFINE(button_thread_stack, BUTTON_THREAD_STACK_SZ_BYTES);
-#define MAX_QUEUED_BUTTON_SM_EVTS  10
+#define MAX_QUEUED_BUTTON_SM_EVTS  100
 #define BUTTON_SM_QUEUE_ALIGNMENT  4
 K_MSGQ_DEFINE(button_sm_evt_q, sizeof(struct Button_SM_Evt),
         MAX_QUEUED_BUTTON_SM_EVTS, BUTTON_SM_QUEUE_ALIGNMENT);
@@ -216,6 +216,10 @@ static void on_pot_changed(struct Pot_Evt *p_evt)
     }
 }
 
+/* ********************
+ * ON MIDI READY TO RX
+ * ********************/
+
 static void on_uart_rx_ready(struct UART_Evt * p_evt) 
 {
     assert(p_evt->sig == k_UART_Evt_Sig_RX_Ready);
@@ -231,20 +235,9 @@ static void on_uart_rx_ready(struct UART_Evt * p_evt)
     k_msgq_put(&sequencer_sm_evt_q, &evt, K_NO_WAIT); 
 }
 
-
-static void on_led_write_ready(struct LED_Driver_Evt *p_evt) 
-{
-    assert(p_evt->sig == k_LED_Driver_Evt_Sig_Write_Ready);
-
-    struct LED_Driver_SM_Evt_Sig_LED_Driver_Write * p_write = (struct LED_Driver_SM_Evt_Sig_LED_Driver_Write *) &p_evt->data.write;
-
-    struct LED_Driver_SM_Evt evt = {
-            .sig = k_LED_Driver_SM_Evt_LED_Driver_Write,
-            .data.write = *p_write
-    };
-
-    k_msgq_put(&led_driver_sm_evt_q, &evt, K_NO_WAIT); 
-}
+/* ********************
+ * ON MIDI READY TO WRITE CHANGE
+ * ********************/
 
 static void on_midi_write_ready(struct UART_Evt *p_evt) 
 {
@@ -261,12 +254,41 @@ static void on_midi_write_ready(struct UART_Evt *p_evt)
 }
 
 
+/* ********************
+ * ON LED READY TO WRITE
+ * ********************/
+static void on_led_write_ready(struct LED_Driver_Evt *p_evt) 
+{
+    assert(p_evt->sig == k_LED_Driver_Evt_Sig_Write_Ready);
+
+    struct LED_Driver_SM_Evt_Sig_LED_Driver_Write * p_write = (struct LED_Driver_SM_Evt_Sig_LED_Driver_Write *) &p_evt->data.write;
+
+    struct LED_Driver_SM_Evt evt = {
+            .sig = k_LED_Driver_SM_Evt_LED_Driver_Write,
+            .data.write = *p_write
+    };
+
+    k_msgq_put(&led_driver_sm_evt_q, &evt, K_NO_WAIT); 
+}
+
+
+/* ********************
+ * ON BUTTON PRESS 
+ * ********************/
+
 static void on_button_press (struct Button_Evt *p_evt) 
 {
-    // assert(p_evt->sig == k_Button_Evt_Sig_Pressed);
+    printk("hola\n"); 
+    assert(p_evt->sig == k_Button_Evt_Sig_Pressed);
 
-    /* queue sm event with button data */
+    struct Sequencer_SM_Evt evt = {
+        .sig = k_Seq_SM_Evt_Sig_Button_Pressed,
+        .data.btn_pressed.portA_state = p_evt->data.pressed.portA_state,
+        .data.btn_pressed.portB_state = p_evt->data.pressed.portB_state,
+        .data.btn_pressed.timestamp = p_evt->data.pressed.timestamp
+    };
 
+    k_msgq_put(&sequencer_sm_evt_q, &evt, K_NO_WAIT);
 
 }
 
@@ -329,6 +351,30 @@ static void on_button_press (struct Button_Evt *p_evt)
     wait_on_instance_initialized();
 
 
+     /* Instance: Button Module */
+    struct Button_Instance_Cfg button_inst_cfg = {
+        .p_inst = &button_inst,
+        .task.sm.p_thread = &button_thread,
+        .task.sm.p_stack = button_thread_stack,
+        .task.sm.stack_sz = K_THREAD_STACK_SIZEOF(button_thread_stack),
+        .task.sm.prio = K_LOWEST_APPLICATION_THREAD_PRIO,
+        .msgq.p_sm_evts = &button_sm_evt_q,
+        .cb = on_button_instance_initialized,
+    };
+    Button_Init_Instance(&button_inst_cfg);
+    wait_on_instance_initialized();
+
+
+    static struct Button_Listener button_press_lsnr;
+    struct UART_Listener_Cfg button_press_lsnr_cfg = {
+        .p_inst = &button_inst,
+        .p_lsnr = &button_press_lsnr, 
+        .sig     = k_Button_Evt_Sig_Pressed,
+        .cb      = on_button_press
+    };
+    Button_Add_Listener(&button_press_lsnr_cfg);
+
+
      /* Instance: UART Module */
     struct UART_Instance_Cfg uart_inst_cfg = {
         .p_inst = &uart_inst,
@@ -350,20 +396,6 @@ static void on_button_press (struct Button_Evt *p_evt)
         .cb      = on_uart_rx_ready
     };
     UART_Add_Listener(&uart_rx_lsnr_cfg);
-
-
-     /* Instance: Button Module */
-    struct Button_Instance_Cfg button_inst_cfg = {
-        .p_inst = &button_inst,
-        .task.sm.p_thread = &button_thread,
-        .task.sm.p_stack = button_thread_stack,
-        .task.sm.stack_sz = K_THREAD_STACK_SIZEOF(button_thread_stack),
-        .task.sm.prio = K_LOWEST_APPLICATION_THREAD_PRIO,
-        .msgq.p_sm_evts = &button_sm_evt_q,
-        .cb = on_button_instance_initialized,
-    };
-    Button_Init_Instance(&button_inst_cfg);
-    wait_on_instance_initialized();
 
 
     /* Instance: Sequencer */
