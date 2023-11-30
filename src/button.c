@@ -464,6 +464,8 @@ static void q_init_instance_event(struct Button_Instance_Cfg * p_cfg)
 
 static void on_button_was_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
 
+    gpio_pin_interrupt_configure_dt(&button_input, GPIO_INT_DISABLE);
+
     struct Button_Instance * p_inst = CONTAINER_OF(cb, struct Button_Instance, button_pressed_gpio_cb);
 
     struct Button_SM_Evt evt = {
@@ -474,10 +476,6 @@ static void on_button_was_pressed(const struct device *dev, struct gpio_callback
     // Queue event to read the i/o expander over i2c and begin debounce process. When that is done we update whatever information we need to take care of. 
 
 }
-
-
-
-
 
 
 
@@ -528,6 +526,8 @@ static void on_debounce_timer_expiry(struct k_timer * p_timer)
     };
 
     q_sm_event(p_inst, &evt);
+    
+    gpio_pin_interrupt_configure_dt(&button_input, GPIO_INT_EDGE_TO_ACTIVE);
 }
 
 
@@ -669,9 +669,7 @@ static void state_run_run(void * o)
                     .data.debounced.portA_state = p_inst->debounce.portA_state,
                     .data.debounced.portB_state = p_inst->debounce.portB_state,
                 };
-
-            q_sm_event(p_inst, &db_evt);
-
+                q_sm_event(p_inst, &db_evt);
             }
         
         break; 
