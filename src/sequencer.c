@@ -327,6 +327,7 @@ static void transport_gpio_pin_config(void) {
     gpio_pin_configure_dt(&resetB, GPIO_INPUT); 
 }
 
+
 static void transport_gpio_interrupt_config(void) {
     gpio_pin_interrupt_configure_dt(&playPauseA, GPIO_INT_EDGE_BOTH);
     gpio_pin_interrupt_configure_dt(&playPauseB, GPIO_INT_EDGE_BOTH);
@@ -350,14 +351,17 @@ static void transport_gpio_callback_config(struct Sequencer_Instance * p_inst) {
 
 static void transport_gpio_init(struct Sequencer_Instance * p_inst) {
 
+    int ret = 0; 
+
     if (!device_is_ready(playPauseA.port) ||
         !device_is_ready(playPauseB.port) ||
         !device_is_ready(resetA.port) ||
         !device_is_ready(resetB.port)) 
     {
-        printk("Transport GPIO Init: FAILED.\n");
-        return;
+        ret = 1;
     }
+
+    assert(ret == 0);
 
     transport_gpio_pin_config();
     transport_gpio_interrupt_config();
