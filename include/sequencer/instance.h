@@ -75,6 +75,7 @@ struct Sequencer_Instance{
     /* Timers used. */
     struct{
         const struct device *t[2]; 
+        bool running[2];
     }timer;
 
     struct {
@@ -104,6 +105,9 @@ struct Sequencer_Instance{
 
     /* Current Seq. */
     enum Sequencer_Id id;
+
+    /* GPIO Transport Interrupt Callback*/
+    struct gpio_callback transport_gpio_cb;
 };
 
 #ifdef __cplusplus

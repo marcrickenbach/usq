@@ -42,18 +42,21 @@
  * Constants, Defines, and Macros
  */
 
-#define SUCCESS (0)
-#define FAIL    (-1)
+#define SUCCESS             (0)
+#define FAIL                (-1)
 
-#define OVERRIDE    true
-#define NO_OVERRIDE false
+#define OVERRIDE            true
+#define NO_OVERRIDE         false
 
-#define TIMER_X DT_INST(0, st_stm32_counter) 
-#define TIMER_Y DT_INST(1, st_stm32_counter)
+#define TIMER_X             DT_INST(0, st_stm32_counter) 
+#define TIMER_Y             DT_INST(1, st_stm32_counter)
 
 // Gate Outs
-#define GATE_PINS DT_PATH(zephyr_user)
+#define GATE_PINS           DT_PATH(zephyr_user)
 #define NUMBER_OF_GATES     2
+
+// Interrupt Pins for Transport
+#define TRANSPORT_PINS      DT_PATH(zephyr_user)
 
 
 /* *****************************************************************************
@@ -88,6 +91,12 @@ const struct gpio_dt_spec gates[NUMBER_OF_GATES] = {
     GPIO_DT_SPEC_GET(GATE_PINS, gate_high_gpios), // Gate 0
     GPIO_DT_SPEC_GET(GATE_PINS, gate_low_gpios)   // Gate 1
 };
+
+const struct gpio_dt_spec playPauseA    = GPIO_DT_SPEC_GET(TRANSPORT_PINS, pp_trigger_high_gpios); 
+const struct gpio_dt_spec playPauseB    = GPIO_DT_SPEC_GET(TRANSPORT_PINS, pp_trigger_low_gpios); 
+const struct gpio_dt_spec resetA        = GPIO_DT_SPEC_GET(TRANSPORT_PINS, rst_trigger_high_gpios);
+const struct gpio_dt_spec resetB        = GPIO_DT_SPEC_GET(TRANSPORT_PINS, rst_trigger_low_gpios); 
+
 
 /* *****************************************************************************
  * Private
@@ -308,6 +317,53 @@ static void init_hardware_timers(struct Sequencer_Instance * p_inst,
 
 }
 
+static void on_transportA(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
+static void on_transportB(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
+
+static void transport_gpio_pin_config(void) {
+    gpio_pin_configure_dt(&playPauseA, GPIO_INPUT);
+    gpio_pin_configure_dt(&playPauseB, GPIO_INPUT);
+    gpio_pin_configure_dt(&resetA, GPIO_INPUT);
+    gpio_pin_configure_dt(&resetB, GPIO_INPUT); 
+}
+
+static void transport_gpio_interrupt_config(void) {
+    gpio_pin_interrupt_configure_dt(&playPauseA, GPIO_INT_EDGE_BOTH);
+    gpio_pin_interrupt_configure_dt(&playPauseB, GPIO_INT_EDGE_BOTH);
+    gpio_pin_interrupt_configure_dt(&resetA, GPIO_INT_EDGE_BOTH);
+    gpio_pin_interrupt_configure_dt(&resetB, GPIO_INT_EDGE_BOTH);
+}
+
+
+static void transport_gpio_callback_config(struct Sequencer_Instance * p_inst) {
+    gpio_init_callback(&p_inst->transport_gpio_cb, on_transportA, BIT(playPauseA.pin));
+    gpio_init_callback(&p_inst->transport_gpio_cb, on_transportA, BIT(resetA.pin));
+    gpio_init_callback(&p_inst->transport_gpio_cb, on_transportB, BIT(playPauseB.pin));
+    gpio_init_callback(&p_inst->transport_gpio_cb, on_transportB, BIT(resetB.pin));
+
+    gpio_add_callback(playPauseA.port, &p_inst->transport_gpio_cb);
+    gpio_add_callback(resetA.port, &p_inst->transport_gpio_cb);
+    gpio_add_callback(playPauseB.port, &p_inst->transport_gpio_cb);
+    gpio_add_callback(resetB.port, &p_inst->transport_gpio_cb);
+}
+
+
+static void transport_gpio_init(struct Sequencer_Instance * p_inst) {
+
+    if (!device_is_ready(playPauseA.port) ||
+        !device_is_ready(playPauseB.port) ||
+        !device_is_ready(resetA.port) ||
+        !device_is_ready(resetB.port)) 
+    {
+        printk("Transport GPIO Init: FAILED.\n");
+        return;
+    }
+
+    transport_gpio_pin_config();
+    transport_gpio_interrupt_config();
+    transport_gpio_callback_config(p_inst);
+
+}
 
 static void init_gate_gpios(struct Sequencer_Instance * p_inst) 
 {
@@ -365,9 +421,11 @@ static void config_instance_deferred(
 
     /* FIXME: These are for testing w/o hardware */
     config_initial_sequencer_values(p_inst); 
-
+    transport_gpio_init(p_inst); 
     init_hardware_timers(p_inst, p_cfg);
     init_gate_gpios(p_inst);
+
+ 
 }
 
 /* Since configuration starts on caller's thread, configure fields that require
@@ -803,6 +861,44 @@ static void advance_sequencer_step (struct Sequencer_Instance * p_inst, enum Seq
 }
 
 
+static void on_transportA(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+    struct Sequencer_Instance * p_inst = CONTAINER_OF(cb, struct Sequencer_Instance, transport_gpio_cb);
+    printk("hello?\n");
+    if (pins & BIT(playPauseA.pin)) {
+        if (p_inst->timer.running[0]) {
+            counter_stop(p_inst->timer.t[0]);
+            p_inst->timer.running[0] = false; 
+        } else {
+            counter_start(p_inst->timer.t[0]);
+            p_inst->timer.running[0] = true; 
+        }
+
+    } else if (pins & BIT(resetA.pin)) {
+        p_inst->seq.step[0] = p_inst->seq.minStep[0];
+    }
+}
+
+
+static void on_transportB(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+    struct Sequencer_Instance * p_inst = CONTAINER_OF(cb, struct Sequencer_Instance, transport_gpio_cb);
+
+    if (pins & BIT(playPauseB.pin)) {
+        if (p_inst->timer.running[1]) {
+            counter_stop(p_inst->timer.t[1]);
+            p_inst->timer.running[1] = false; 
+        } else {
+            counter_start(p_inst->timer.t[1]);
+            p_inst->timer.running[1] = true; 
+        }
+
+    } else if (pins & BIT(resetB.pin)) {
+        p_inst->seq.step[1] = p_inst->seq.minStep[1];
+    }
+}
+
+
 /* **********
  * FSM States
  * **********/
@@ -883,10 +979,9 @@ static void state_init_run(void * o)
      * Sequencer_Init_Instance()), now finish the job. Since this is an
      * Init_Instance event the data contains the intance cfg. */
     struct Sequencer_SM_Evt_Sig_Init_Instance * p_ii = &p_evt->data.init_inst;
+    
     config_instance_deferred(p_inst, &p_ii->cfg);
-
-    broadcast_instance_initialized(p_inst, p_ii->cfg.cb);
-
+    broadcast_instance_initialized(p_inst, p_ii->cfg.cb);  
     smf_set_state(SMF_CTX(p_sm), &states[run]);
 }
 
