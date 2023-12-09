@@ -87,6 +87,8 @@
 &adc1 {
     pinctrl-0 = <&adc1_in7_pa7>;  
     pinctrl-names = "default";
+    st,adc-prescaler = <2>;
+    // st,adc-clock-source = <1>;
     status = "okay";  
 };
 
