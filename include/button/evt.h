@@ -50,7 +50,7 @@ enum Button_Evt_Sig{
  * out-of-order. */
 struct Button_Instance;
 
-/* Data signal k_DAC_Evt_Sig_Instance_Initialized can generate. */
+/* Data signal k_Button_Evt_Sig_Instance_Initialized can generate. */
 struct Button_Evt_Data_Instance_Initialized{
     struct Button_Instance * p_inst;
 };

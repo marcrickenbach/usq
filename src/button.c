@@ -422,7 +422,7 @@ static bool find_list_containing_listener_and_remove_listener(
     struct Button_Instance * p_inst,
 	struct Button_Listener * p_lsnr)
 {
-    for(enum DAC_Button_Sig sig = k_Button_Evt_Sig_Beg;
+    for(enum Button_Sig sig = k_Button_Evt_Sig_Beg;
                          sig < k_Button_Evt_Sig_End;
                          sig++){
         bool found_and_removed = sys_slist_find_and_remove(

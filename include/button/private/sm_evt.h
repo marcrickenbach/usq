@@ -29,7 +29,7 @@ enum Button_SM_Evt_Sig{
     k_Button_SM_Evt_Sig_1st = k_Button_SM_Evt_Sig_Beg,    // Inclusive
 
 	k_Button_SM_Evt_Sig_Init_Instance = k_Button_SM_Evt_Sig_Beg,
-    #if CONFIG_FKMG_DAC_ALLOW_SHUTDOWN
+    #if CONFIG_FKMG_BUTTON_ALLOW_SHUTDOWN
 	k_Button_SM_Evt_Sig_Deinit_Instance,
     #endif
 	k_Button_SM_Evt_Sig_Pressed,
@@ -45,7 +45,7 @@ enum Button_SM_Evt_Sig{
 	k_Button_SM_Evt_Sig_Ivd = k_Button_SM_Evt_Sig_End
 };
 
-/* Data signal k_DAC_SM_Evt_Sig_Init_Instance can generate. */
+/* Data signal k_BUTTON_SM_Evt_Sig_Init_Instance can generate. */
 struct Button_SM_Evt_Sig_Init_Instance{
     struct Button_Instance_Cfg cfg;
 };
@@ -65,7 +65,7 @@ struct Button_SM_Evt_Sig_Debounced{
 
 
 
-/* Events (i.e. signal + signal's data if any) DAC State Machine generates. */
+/* Events (i.e. signal + signal's data if any) Button State Machine generates. */
 struct Button_SM_Evt{
 	enum Button_SM_Evt_Sig sig;
 	union Button_SM_Evt_Data{
