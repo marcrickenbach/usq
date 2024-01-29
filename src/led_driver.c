@@ -18,6 +18,7 @@
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/spi.h>
+#include <zephyr/drivers/pwm.h>
 
 #include <assert.h>
 
@@ -37,8 +38,23 @@
 #define NO_OVERRIDE false
 
 #define SPI2_NODE       DT_NODELABEL(spi2)
+#define PWM_LED_NODE    DT_NODELABEL(led_pwm)
+#define PWM_CTLR DT_PWMS_CTLR(PWM_LED_NODE)
+#define PWM_CHAN DT_PWMS_CHANNEL(PWM_LED_NODE)
+#define PWM_FLAGS DT_PWMS_FLAGS(PWM_LED_NODE)
 
+#define GPIO_PINS           DT_PATH(zephyr_user)
+#define GPIOB_PORT          DEVICE_DT_GET(DT_NODELABEL(gpiob))
 
+#define LED_BLANK_TIMER     DT_INST(2, st_stm32_counter)
+
+/* LED Brightness */
+#define FULL_BRIGHTNESS     0xFFF
+#define HALF_BRIGHTNESS     0x7FF
+#define QUARTER_BRIGHTNESS  0x3FF
+#define DIM_ARMED_STEP      0x1A
+
+#define NO_OFFSET           16
 /* *****************************************************************************
  * Debugging
  */
@@ -50,7 +66,7 @@
 #endif
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(LED_Driver, CONFIG_FKMG_LED_DRIVER_LOG_LEVEL);
+LOG_MODULE_REGISTER(LED_Driver);
 
 /* *****************************************************************************
  * Structs
@@ -60,10 +76,53 @@ static struct LED_Driver_module_data led_driver_md = {0};
 /* Convenience accessor to keep name short: md - module data. */
 #define md led_driver_md
 
+// LED Driver SPI Device
 const struct device * spi_dev = DEVICE_DT_GET(SPI2_NODE);
 
-/* LED order corresponding to driver order */
-const uint8_t LED_ADDRESS[16] = {0, 1, 2, 3, 4, 5, 6, 7, 15, 14, 13, 12, 11, 10, 9, 8}; 
+// LED PWM Signal
+const struct device * led_pwm_dev = DEVICE_DT_GET(PWM_LED_NODE);
+
+// LED Driver Latch Enable Pin
+const struct gpio_dt_spec led_le = GPIO_DT_SPEC_GET(GPIO_PINS, led_le_gpios); 
+
+// LED Driver Blank Timer
+const struct device *led_driver_blank_timer = DEVICE_DT_GET(LED_BLANK_TIMER);
+
+// LED Driver Blank Pin
+const struct gpio_dt_spec led_blank = GPIO_DT_SPEC_GET(GPIO_PINS, led_blank_gpios);
+
+
+
+struct spi_config spi_cfg = {
+    .frequency = 2500000,
+    .operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB,
+    .slave = 0,
+    .cs = NULL,
+};
+
+
+/*  Map from LED number to TLC5940 output channel. Adjust this for future uses. This accounts for the order in which
+    the LEDs are wired on the driver as well as the way in which the sub-routine update_leds iterates through the led
+    buffer according to the needs of the driver.
+*/
+const static int led_to_out_map[16] = {15, 14, 13, 12, 11, 10, 9, 8, 0, 1, 2, 3, 4, 5, 6, 7};
+
+
+/* LED Data */
+uint8_t led_data[24];
+
+struct spi_buf tx_buf = {
+    .buf = led_data,
+    .len = sizeof(led_data)
+};
+
+struct spi_buf_set tx = {
+    .buffers = &tx_buf,
+    .count = 1
+};
+
+/* Buffer to hold LED data during our run. Two public APIs, update_leds and arm_leds (maybe more in future) will read and write to this variable*/
+static uint16_t led_buffer[16] = {0};
 
 /* *****************************************************************************
  * Private
@@ -198,6 +257,8 @@ static void init_instance_lists(struct LED_Driver_Instance * p_inst)
     }
 }
 
+
+
 static void clear_instance(struct LED_Driver_Instance * p_inst)
 {
     memset(p_inst, 0, sizeof(*p_inst));
@@ -212,12 +273,257 @@ static void init_instance(struct LED_Driver_Instance * p_inst)
     #endif
 }
 
+/****************************
+ * LED DRIVER FUNCTIONS
+ ****************************/
 
-static void spi_peripheral_init(struct LED_Driver_Instance * p_inst) 
+
+static void led_blank_pulse(bool status) 
 {
-    int ret = device_is_ready(spi_dev); 
-    assert(ret == true);
+    int ret = gpio_pin_set(led_blank.port, led_blank.pin, status);
+    ret = gpio_pin_set(led_blank.port, led_blank.pin, !status);
+    if (ret < 0) {
+        LOG_ERR("Could not set LED latch enable pin");
+        return;
+    }
 }
+
+static void led_blank_timer_callback (const struct device *timer_dev,
+                              uint8_t chan_id, uint32_t ticks,
+                              void *user_data)
+{
+
+    // LOG_INF("LED Blank Timer Callback\n");
+    led_blank_pulse(true);
+
+    #define DESIRED_TIME_IN_MS 4
+    //1MHz is counter frequency, we're counting to 4000 ticks, so that we have time to fire the interrupt and hit around 4095
+    
+    uint32_t tix = (DESIRED_TIME_IN_MS * 1000000) / 1000;
+
+    struct counter_alarm_cfg blank_cfg = {
+        .flags = 0,
+        .ticks = tix,
+        .callback = led_blank_timer_callback,
+        .user_data = user_data
+    }; 
+
+    
+    if (counter_set_channel_alarm(led_driver_blank_timer, 0, &blank_cfg) != 0) {
+        LOG_ERR("Error: Failed to set LED Driver Blank Timer"); 
+        return;
+    }
+
+    return; 
+}
+
+static void init_led_blank_timer(struct LED_Driver_Instance * p_inst)
+{
+
+    if (!device_is_ready(led_driver_blank_timer)){
+        LOG_ERR("LED Blank Timer Config: FAILED.\n");
+        return;
+    }
+
+    #define DESIRED_TIME_IN_MS 4
+    //7.5MHz is counter frequency 
+
+    uint32_t ticks = (DESIRED_TIME_IN_MS * 1000000) / 1000;
+
+    struct counter_alarm_cfg blank_cfg = {
+        .flags = 0,
+        .ticks = ticks,
+        .callback = led_blank_timer_callback,
+        .user_data = p_inst
+    };
+
+    
+    if (counter_set_channel_alarm(led_driver_blank_timer, 0, &blank_cfg) != 0) {
+        LOG_ERR("Error: Failed to set LED Driver Blank Timer"); 
+    }
+
+    return; 
+
+}
+
+
+
+static void led_latch_enable_pulse(bool status) 
+{
+    int ret = gpio_pin_set(led_le.port, led_le.pin, status);
+    ret = gpio_pin_set(led_le.port, led_le.pin, !status);
+
+    if (ret < 0) {
+        LOG_ERR("Could not set LED latch enable pin");
+        return;
+    }
+}
+
+static void pwm_signal_init(struct LED_Driver_Instance * p_inst) {
+    
+    // 1Mhz, 50% duty cycle
+
+    int ret = pwm_set(led_pwm_dev, 1, 1000, 500, 0);
+    assert(ret == 0);
+
+}
+
+static void led_blank_init(struct LED_Driver_Instance * p_inst) 
+{
+    int ret = gpio_pin_configure_dt(&led_blank, GPIO_OUTPUT_ACTIVE);
+    if (ret < 0) {
+        LOG_ERR("Could not configure LED latch enable pin, %d", ret);
+        return;
+    }
+}
+
+
+static void led_latch_enable_init(struct LED_Driver_Instance * p_inst) 
+{
+    int ret = gpio_pin_configure_dt(&led_le, GPIO_OUTPUT_INACTIVE);
+    if (ret < 0) {
+        LOG_ERR("Could not configure LED latch enable pin, %d", ret);
+        return;
+    }
+
+}
+
+
+
+static void led_driver_init(struct LED_Driver_Instance * p_inst) 
+{
+    uint8_t dummy_data[25] = {0};
+
+    struct spi_buf dummy_buf = {
+        .buf = dummy_data,
+        .len = sizeof(dummy_data)
+    };
+
+    struct spi_buf_set dummy_tx = {
+        .buffers = &dummy_buf,
+        .count = 1
+    };
+
+    int ret = device_is_ready(spi_dev); 
+    if (ret == false) {
+        LOG_ERR("Could not get SPI device");
+        return;
+    }
+
+    if (led_pwm_dev == NULL || !device_is_ready(led_pwm_dev)) {
+        LOG_ERR("Could not get PWM device");
+        return;
+    }
+
+    // Initialize LED Driver Latch Enable Pin, Blank Pin and Grayscale Clock (PWM)
+    led_blank_init(p_inst);
+    led_latch_enable_init(p_inst);
+    pwm_signal_init(p_inst);
+    init_led_blank_timer(p_inst);
+
+    ret = counter_start(led_driver_blank_timer);
+    if(ret != 0) {
+        LOG_ERR("Error: Failed to start LED Driver Blank Timer"); 
+        return;
+    }
+
+    k_msleep(100); 
+
+    ret = spi_write(spi_dev, &spi_cfg, &dummy_tx);
+    if (ret != 0) {
+        LOG_ERR("Could not write to SPI device");
+        return;
+    }
+
+    led_latch_enable_pulse(true);
+
+}
+
+
+#define FULL_BRIGHTNESS 0xFFF // 12-bit full brightness
+#define STEPS 1200 // Number of steps for brightening and dimming
+#define BLINK_DELAY_MS 25 // Delay in milliseconds for blinks
+
+
+void clear_leds(); 
+void set_led_full_brightness(int led_number); 
+
+// Helper function to pack the led_buffer into led_data and write it to the TLC5940
+void pack_and_write_led_data() {
+    int j = 0; // Start index for led_data
+    for (int m = 0; m < 16; m += 2) {
+        led_data[j] = led_buffer[m] >> 4;
+        led_data[j+1] = (led_buffer[m] << 4) | (led_buffer[m + 1] >> 8);
+        led_data[j+2] = led_buffer[m + 1] & 0xFF;
+        j += 3;
+    }
+
+    // Write the new led_data to the TLC5940
+    int ret = spi_write(spi_dev, &spi_cfg, &tx);
+    if (ret != 0) {
+        LOG_ERR("Could not write to SPI device");
+        return;
+    }
+
+    // Pulse the latch to update the LED outputs
+    led_latch_enable_pulse(true);
+}
+
+static void led_startup_animation(int duration_ms) 
+{
+
+        // Sequentially turn on each LED, then blink twice
+    for (int i = 0; i < 16; i++) {
+        // Light up LED
+        set_led_full_brightness(i);
+        k_msleep(BLINK_DELAY_MS);
+
+        // Blink off
+        clear_leds();
+        k_msleep(BLINK_DELAY_MS);
+
+    }
+
+    // Calculate the amount of brightness change per step and the delay per step
+    int brightness_change_per_step = HALF_BRIGHTNESS / STEPS;
+    int delay_per_step = duration_ms / (STEPS * 2); // Multiply by 2 for brighten and dim phases
+
+    // Brighten the LEDs gradually
+    for (int step = 0; step <= STEPS; step++) {
+        int current_brightness = brightness_change_per_step * step;
+
+        // Set the brightness for each LED
+        for (int k = 0; k < 16; k++) {
+            led_buffer[k] = current_brightness;
+        }
+        
+        // Pack the brightness values into led_data and write to the TLC5940
+        pack_and_write_led_data();
+
+        // Wait before next increment
+        k_msleep(delay_per_step);
+    }
+
+    // Dim the LEDs gradually
+    for (int step = STEPS; step >= 0; step--) {
+        int current_brightness = brightness_change_per_step * step;
+
+        // Set the brightness for each LED
+        for (int k = 0; k < 16; k++) {
+            led_buffer[k] = current_brightness;
+        }
+        
+        // Pack the brightness values into led_data and write to the TLC5940
+        pack_and_write_led_data();
+
+        // Wait before next decrement
+        k_msleep(delay_per_step);
+    }
+}
+
+
+
+
 
 
 
@@ -418,57 +724,6 @@ static void q_init_instance_event(struct LED_Driver_Instance_Cfg * p_cfg)
 }
 
 
-static uint16_t set_new_led_value_on_step(struct LED_Driver_Instance * p_inst, uint8_t step, uint8_t offset, uint8_t seq_id)
-{
-    uint16_t led_mask = 0; 
-    uint16_t current_led_value = p_inst->led_value.current;
-    uint16_t new_led_value = 0;
-
-    if (seq_id == 0) {
-        led_mask = (1U << LED_ADDRESS[step]);
-        if (offset == 0) {
-            new_led_value = current_led_value | led_mask;
-        } else {
-            uint16_t clear_bits = ~(uint16_t)(1U << LED_ADDRESS[offset]-1); 
-            new_led_value = current_led_value & clear_bits;
-            new_led_value = new_led_value | led_mask;
-        }
-    } else {
-        led_mask = (1U << LED_ADDRESS[step]);
-        uint16_t clear_bits = 0xFFFF << offset;
-        new_led_value = current_led_value & clear_bits;
-        new_led_value = new_led_value | led_mask;
-    }
-
-    p_inst->led_value.current = new_led_value;
-
-    return new_led_value; 
-}
-
-
-static void write_led_data_to_spi(struct LED_Driver_Instance * p_inst, uint16_t leds)
-{
-    struct spi_config spi_cfg = {
-        .frequency = 1000000,
-        .operation = SPI_WORD_SET(16) | SPI_TRANSFER_MSB | SPI_MODE_CPOL | SPI_MODE_CPHA,
-        .slave = 0,
-        .cs = NULL,
-    };
-
-    struct spi_buf tx_buf = {
-        .buf = &leds,
-        .len = sizeof(leds)
-    };
-
-    struct spi_buf_set tx = {
-        .buffers = &tx_buf,
-        .count = 1
-    };
-
-    int ret = spi_write(spi_dev, &spi_cfg, &tx);
-    assert(ret == 0);
-}
-
 
 
 /* **********
@@ -556,6 +811,10 @@ static void state_init_run(void * o)
     config_instance_deferred(p_inst, &p_ii->cfg);
     broadcast_instance_initialized(p_inst, p_ii->cfg.cb);
 
+    led_driver_init(p_inst);
+
+    led_startup_animation(1000);
+
     smf_set_state(SMF_CTX(p_sm), &states[run]);
 }
 
@@ -584,9 +843,15 @@ static void state_run_run(void * o)
             break;
         case k_LED_Driver_SM_Evt_LED_Driver_Write:
             struct LED_Driver_SM_Evt_Sig_LED_Driver_Write * p_write = &p_evt->data.write; 
-            
-            uint16_t led_value = set_new_led_value_on_step(p_inst, p_write->step, p_write->offset, p_write->id);
-            write_led_data_to_spi(p_inst, led_value);
+
+            // int ret = spi_write(spi_dev, &spi_cfg, &tx);
+
+            // if (ret != 0) {
+            //     LOG_ERR("Could not write to SPI device");
+            //     return;
+            // }
+
+            // led_latch_enable_pulse(true);
 
              break;
         #if CONFIG_FKMG_LED_DRIVER_SHUTDOWN_ENABLED
@@ -648,7 +913,6 @@ static void thread(void * p_1, /* struct LED_Driver_Instance* */
         void * p_2_unused, void * p_3_unused)
 {
     struct LED_Driver_Instance * p_inst = p_1;
-    // printk("LED_Driver Thread Start. \n"); 
     /* NOTE: smf_set_initial() executes the entry state. */
     struct smf_ctx * p_sm = &p_inst->sm;
     smf_set_initial(SMF_CTX(p_sm), &states[init]);
@@ -703,6 +967,86 @@ static void start_thread(
 /* *****************************************************************************
  * Public
  */
+
+
+void clear_leds() {
+    memset(led_buffer, 0, sizeof(led_buffer));
+    pack_and_write_led_data();
+}
+
+
+void set_led_full_brightness(int led_number) {
+    clear_leds(); // Clear all first to ensure only one LED is lit
+    led_buffer[led_number] = HALF_BRIGHTNESS;
+    pack_and_write_led_data();
+}
+
+void arm_led(bool channel, uint16_t step, uint16_t offset, bool armed) 
+{
+    
+    if (armed) {
+        led_buffer[(channel * offset) + step] = DIM_ARMED_STEP;
+    } else {
+        led_buffer[(channel * offset) + step] = 0;
+    }
+
+    int ret = spi_write(spi_dev, &spi_cfg, &tx);
+    if (ret != 0) {
+        LOG_ERR("Could not write to SPI device");
+        return;
+    }
+
+    led_latch_enable_pulse(true);
+}
+
+
+void update_leds(bool channel, uint16_t step, uint16_t offset, uint16_t value)
+{
+    memset(led_buffer, 0, sizeof(led_buffer));
+
+    int index = (channel * offset) + step;
+    index = led_to_out_map[index];
+    /*  Make sure we're only packing data into the appropriate channel.
+        We also account for moving offsets, which would change
+        the start index for channel 1. Finally, before packing the data,
+        we add our 12-bit value to the led_buffer.
+    */
+
+    int byte_offset = (offset * 3) / 2;
+    int led_offset = (offset % 2 == 0) ? byte_offset * 2 / 3 : byte_offset * 2 / 3 + 1;
+
+    int start_idx, end_idx, start_led, end_led;
+    if (channel == 1) {
+        start_idx = 0;
+        end_idx = byte_offset - 1;
+        start_led = 0;
+        end_led = led_offset - 1;
+        led_buffer[index] = value; 
+    } else { // Assuming channel is 1
+        start_idx = byte_offset;
+        end_idx = 23;
+        start_led = led_offset;
+        end_led = 15;
+        led_buffer[index] = value; 
+    }
+
+    int j = start_idx; // Start index for led_data
+    for (int i = start_led; i <= end_led; i += 2) {
+        led_data[j] = led_buffer[i] >> 4;
+        led_data[j+1] = (led_buffer[i] << 4) | (i + 1 <= end_led ? led_buffer[i + 1] >> 8 : 0);
+        led_data[j+2] = (i + 1 <= end_led) ? led_buffer[i + 1] & 0xFF : 0;
+        j += 3;
+    }
+
+    int ret = spi_write(spi_dev, &spi_cfg, &tx);
+    if (ret != 0) {
+        LOG_ERR("Could not write to SPI device");
+        return;
+    }
+
+    led_latch_enable_pulse(true);
+}
+
 
 void LED_Driver_Init_Instance(struct LED_Driver_Instance_Cfg * p_cfg)
 {

@@ -63,7 +63,7 @@
 #endif
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(uart, CONFIG_FKMG_UART_LOG_LEVEL);
+LOG_MODULE_REGISTER(uart);
 
 /* *****************************************************************************
  * Structs
@@ -202,8 +202,8 @@ static void config_instance_deferred(
     for (int i = 0; i < 16; i++) {
         p_inst->midi.note[i] = 0 + (i * 5); 
     }
-    init_dma_device(p_inst); 
-    init_uart_device(p_inst);
+    // init_dma_device(p_inst); 
+    // init_uart_device(p_inst);
 
 }
 
@@ -266,7 +266,7 @@ void uart_callback(const struct device *dev, struct uart_event *evt, void *user_
             memset(rx_buf, 0, sizeof(rx_buf));  
             break;
         case UART_TX_ABORTED:
-            printk("UART TX ABORTED\n");
+            LOG_ERR("UART TX ABORTED\n");
             break;
 
     }
@@ -702,20 +702,20 @@ static void state_run_run(void * o)
             assert(false);
             break;
         case k_UART_SM_Evt_Sig_Write_MIDI:
-            /* handle UART Write information here */
-            struct UART_SM_Evt_Sig_Write_MIDI *midi = &p_evt->data.midi_write; 
+            // /* handle UART Write information here */
+            // struct UART_SM_Evt_Sig_Write_MIDI *midi = &p_evt->data.midi_write; 
 
-            // set up midi package in function
-            uint8_t midi_note = get_midi_note(p_inst, midi->id, midi->seq, midi->step, midi->offset);
+            // // set up midi package in function
+            // uint8_t midi_note = get_midi_note(p_inst, midi->id, midi->seq, midi->step, midi->offset);
 
-            int ret = transmit_midi_package_to_uart(p_inst, midi->midi_status, midi_note, midi->ctrl_byte); 
-            assert(ret == 0);
+            // int ret = transmit_midi_package_to_uart(p_inst, midi->midi_status, midi_note, midi->ctrl_byte); 
+            // assert(ret == 0);
             
             break;
         case k_UART_SM_Evt_Sig_Changed:
-            struct UART_SM_Evt_Sig_Changed *midi_changed = &p_evt->data.changed; 
+            // struct UART_SM_Evt_Sig_Changed *midi_changed = &p_evt->data.changed; 
 
-            convert_voltage_to_midi(p_inst, midi_changed->seq, midi_changed->stp, midi_changed->val);
+            // convert_voltage_to_midi(p_inst, midi_changed->seq, midi_changed->stp, midi_changed->val);
 
             break;
         #if CONFIG_FKMG_UART_SHUTDOWN_ENABLED
@@ -777,7 +777,6 @@ static void thread(void * p_1, /* struct UART_Instance* */
         void * p_2_unused, void * p_3_unused)
 {
     struct UART_Instance * p_inst = p_1;
-    // printk("UART Thread Start. \n"); 
     /* NOTE: smf_set_initial() executes the entry state. */
     struct smf_ctx * p_sm = &p_inst->sm;
     smf_set_initial(SMF_CTX(p_sm), &states[init]);

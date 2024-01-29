@@ -99,6 +99,7 @@ struct Sequencer_Instance{
         bool edge[2]; 
         uint16_t global; 
         uint8_t offset; 
+        bool running[2];
     }seq; 
 
     counter_alarm_callback_t tim_cb[2];
@@ -106,8 +107,11 @@ struct Sequencer_Instance{
     /* Current Seq. */
     enum Sequencer_Id id;
 
-    /* GPIO Transport Interrupt Callback*/
-    struct gpio_callback transport_gpio_cb;
+    struct gpio_callback transport_gpio_1_cb;
+    struct gpio_callback transport_gpio_2_cb;
+    struct gpio_callback transport_gpio_1_rst_cb;
+    struct gpio_callback transport_gpio_2_rst_cb;
+
 };
 
 #ifdef __cplusplus

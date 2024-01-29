@@ -58,8 +58,7 @@ struct Button_SM_Evt_Sig_Pressed{
 
 /* Data signal k_Button_SM_Evt_Sig_Pressed can generate. */
 struct Button_SM_Evt_Sig_Debounced{
-    uint8_t portA_state;
-    uint8_t portB_state;
+    uint8_t btn_state[2];
 };
 
 

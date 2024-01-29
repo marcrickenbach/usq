@@ -48,7 +48,7 @@
 #endif
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(dac, CONFIG_FKMG_DAC_LOG_LEVEL);
+LOG_MODULE_REGISTER(dac);
 
 /* *****************************************************************************
  * Structs
@@ -173,7 +173,7 @@ static void dac_device_init(void)
     struct dac_channel_cfg channel_configs[MAX_DAC_CHANNELS]; 
 
      if (!device_is_ready(dac_dev)) {
-        printk("DAC Configuration: Fail.\n");
+        LOG_ERR("DAC Configuration: Fail.\n");
         return; 
     } else {
         for (int i = 1; i < MAX_DAC_CHANNELS + 1; i++ ){
@@ -182,13 +182,12 @@ static void dac_device_init(void)
             channel_configs[i].buffered = DAC_BUFFERED;
             
             if (dac_channel_setup(dac_dev, &channel_configs[i]) != 0) {
-                printk("DAC Device, Channel %d set up: Failed\n", i);
+                LOG_ERR("DAC Device, Channel %d set up: Failed", i);
                 return; 
             } else {
-                printk("DAC Device, Channel %d set up: PASSED\n", i);
+                // LOG_INF("DAC Device, Channel %d set up: PASSED", i);
             }
         };
-            // printk("DAC Configuration Complete.\n");
         }
 }
 
@@ -590,7 +589,6 @@ static void thread(void * p_1, /* struct DAC_Instance* */
         void * p_2_unused, void * p_3_unused)
 {
     struct DAC_Instance * p_inst = p_1;
-    // printk("DAC Thread Start. \n"); 
     /* NOTE: smf_set_initial() executes the entry state. */
     struct smf_ctx * p_sm = &p_inst->sm;
     smf_set_initial(SMF_CTX(p_sm), &states[init]);
@@ -703,7 +701,7 @@ void dac_write_new_value(uint8_t ch, uint32_t val) {
     ret = dac_write_value(dac_dev, ch, val);
 
     if (ret != 0) {
-        printk("DAC Write Error \n");
+        LOG_ERR("DAC Write Error %d", ret);
         return; 
     }
 

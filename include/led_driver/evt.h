@@ -59,8 +59,10 @@ struct LED_Driver_Evt_Data_Changed{
 
 /* Data signal k_LED_Driver_Evt_Sig_Write_Ready can generate. */
 struct LED_Driver_Evt_Write_Ready{
-    enum LED_Driver_Id id;
-    uint16_t    val;
+    bool channel;
+    uint16_t step;
+    uint8_t offset;
+    uint16_t val; 
 };
 
 

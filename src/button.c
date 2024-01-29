@@ -38,16 +38,9 @@
 
 #define DEBOUNCE_DELAY      K_MSEC(10)
 
-
 #define MCP23017_ADDR       0x20        // Adjust the address based on your hardware setup
-#define MCP23017_IODIRA     0x00        // I/O direction register for port A
-#define MCP23017_IODIRB     0x01        // I/O direction register for port B
-#define MCP23017_IOCON      0x0A        // IOCON register
-#define MCP23017_GPINTENA   0x04        // Interrupt-on-change control register for port A
-#define MCP23017_GPINTENB   0x05        // Interrupt-on-change control register for port B
-#define MCP23017_GPIOA      0x12        // GPIO register for port A
-#define MCP23017_GPIOB      0x13        // GPIO register for port B
 
+#define GPIO_PINS           DT_PATH(zephyr_user)
 
 /* *****************************************************************************
  * Debugging
@@ -60,7 +53,7 @@
 #endif
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(button, CONFIG_FKMG_BUTTON_LOG_LEVEL);
+LOG_MODULE_REGISTER(button);
 
 /* *****************************************************************************
  * Structs
@@ -74,6 +67,10 @@ const struct gpio_dt_spec button_input  = GPIO_DT_SPEC_GET(BUTTON_PINS, sw_input
 
 const struct device * i2c_dev = DEVICE_DT_GET(I2C2_NODE);
 
+const struct gpio_dt_spec sw_input_int  = GPIO_DT_SPEC_GET(GPIO_PINS, sw_input_gpios);
+const struct gpio_dt_spec sw_address_0  = GPIO_DT_SPEC_GET(GPIO_PINS, sw_addr_0_gpios);
+const struct gpio_dt_spec sw_address_1  = GPIO_DT_SPEC_GET(GPIO_PINS, sw_addr_1_gpios);
+const struct gpio_dt_spec sw_address_2  = GPIO_DT_SPEC_GET(GPIO_PINS, sw_addr_2_gpios);
 
 uint32_t test = 0;
 
@@ -193,60 +190,145 @@ static void on_button_was_pressed(const struct device *dev, struct gpio_callback
 
 static void button_gpio_init(struct Button_Instance * p_inst) {
 
-    int ret = gpio_is_ready_dt(&button_input); 
-    assert(ret == true);
-    
-    gpio_pin_configure_dt(&button_input, GPIO_INPUT);
-    gpio_pin_interrupt_configure_dt(&button_input, GPIO_INT_EDGE_TO_ACTIVE);
-    gpio_init_callback(&p_inst->button_pressed_gpio_cb, on_button_was_pressed, BIT(button_input.pin));
-    gpio_add_callback(button_input.port, &p_inst->button_pressed_gpio_cb);
+
+    if  (   !device_is_ready(sw_input_int.port) ||
+            !device_is_ready(sw_address_0.port) ||
+            !device_is_ready(sw_address_1.port) ||
+            !device_is_ready(sw_address_2.port)
+        ){
+        LOG_ERR("GPIO Ready: Failed");
+        return; 
+    }
+
+    int ret = gpio_pin_configure_dt(&sw_address_0, GPIO_OUTPUT_LOW);
+    if (ret < 0) {
+        LOG_ERR("Could not configure LED latch enable pin, %d", ret);
+        return;
+    }
+
+    ret = gpio_pin_configure_dt(&sw_address_1, GPIO_OUTPUT_LOW);
+    if (ret < 0) {
+        LOG_ERR("Could not configure LED latch enable pin, %d", ret);
+        return;
+    }
+
+    ret = gpio_pin_configure_dt(&sw_address_2, GPIO_OUTPUT_LOW);
+    if (ret < 0) {
+        LOG_ERR("Could not configure LED latch enable pin, %d", ret);
+        return;
+    }
+
+
 }
 
-/* FIXME: when this is called, the UART module crashes about a minute into running. Not sure why, this should write briefly and then bow out. */
+static void MCP23017_i2c_init(struct Button_Instance * p_inst) {
 
-static void expander_i2c_init(struct Button_Instance * p_inst) {
+    if (i2c_dev == NULL || !device_is_ready(i2c_dev)) {
+        LOG_ERR("I2C Device: Failed");
+        // return; 
+    }
 
-    int ret = device_is_ready(i2c_dev); 
-    assert(ret == true);
+    if (i2c_configure(i2c_dev, I2C_SPEED_FAST) != 0) {
+        LOG_ERR("I2C Configure: Failed");
+        // return; 
+    }
 
-    // TODO: read the i/o expander via i2c to make sure we can communicate with it.
+    uint8_t write_buf[2];
+    uint8_t read_buf[1];
+    int ret;
 
-    uint8_t buf[2];
-    buf[0] = MCP23017_IODIRA;
-    buf[1] = 0xFF; // Set all pins as inputs on port A
-    ret = i2c_write(i2c_dev, buf, 2, MCP23017_ADDR);
-    // assert(ret == 0); 
+    write_buf[0] = MCP23017_IOCONA;
+    write_buf[1] = 0x42;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
 
-    buf[0] = MCP23017_IODIRB;
-    buf[1] = 0xFF; // Set all pins as inputs on port B
-    ret = i2c_write(i2c_dev, buf, 2, MCP23017_ADDR);
+    // write_buf[0] = MCP23017_IOCONB;
+    // write_buf[1] = 0x40;
+    // ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
     // assert(ret == 0);
 
-    /* We want both ports to interrupt on int pin A */
-    buf[0] = MCP23017_IOCON;
-    buf[1] = 0x40; // Set mirror bit. This causes the INTA and INTB pins to mirror the interrupt pins.
-    ret = i2c_write(i2c_dev, buf, 2, MCP23017_ADDR);
-    // assert(ret == 0);
+    write_buf[0] = MCP23017_IODIRA;
+    write_buf[1] = 0x7F;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
 
-    buf[0] = MCP23017_GPINTENA;
-    buf[1] = 0xFF; // Enable interrupts for all pins on port A
-    ret = i2c_write(i2c_dev, buf, 2, MCP23017_ADDR);
-    // assert(ret == 0);
+    write_buf[0] = MCP23017_IODIRB;
+    write_buf[1] = 0x7F;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
 
-    buf[0] = MCP23017_GPINTENB;
-    buf[1] = 0xFF; // Enable interrupts for all pins on port B
-    ret = i2c_write(i2c_dev, buf, 2, MCP23017_ADDR);
-    // assert(ret == 0);
+    // Configure Polarity for all pins on ports A and B
+    write_buf[0] = MCP23017_IPOLA;
+    write_buf[1] = 0xFF;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
 
-    printk("I2C Config: PASSED.\n"); 
+    write_buf[0] = MCP23017_IPOLB;
+    write_buf[1] = 0xFF;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
+
+    // Enable interrupts for all pins on ports A and B
+    write_buf[0] = MCP23017_GPINTENA;
+    write_buf[1] = CONFIG_INT_ON_CHG_EN;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
+
+    write_buf[0] = MCP23017_GPINTENB;
+    write_buf[1] = CONFIG_INT_ON_CHG_EN;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
+
+    // Set default value for all pins on ports A and B
+    write_buf[0] = MCP23017_DEFVALA;
+    write_buf[1] = 0x00;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
+
+    write_buf[0] = MCP23017_DEFVALB;
+    write_buf[1] = 0x00;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
+
+    // Set interrupt control register for ports A and B
+    write_buf[0] = MCP23017_INTCONA;
+    write_buf[1] = 0xFF;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
+
+    write_buf[0] = MCP23017_INTCONB;
+    write_buf[1] = 0xFF;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
+
+    // Set pull-up resistor register for ports A and B
+    write_buf[0] = MCP23017_GPPUA;
+    write_buf[1] = CONFIG_ALL_PULLUP;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
+
+    write_buf[0] = MCP23017_GPPUB;
+    write_buf[1] = CONFIG_ALL_PULLUP;
+    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
+    assert(ret == 0);
+
+
+    // Read from MCP23017 registers to clear them. 
+    write_buf[0] = 0x10;  // Register address
+    ret = i2c_write_read(i2c_dev, MCP23017_ADDR, write_buf, 1, read_buf, 1);
+    assert(ret == 0);
+
+    write_buf[0] = 0x11;  // Register address
+    ret = i2c_write_read(i2c_dev, MCP23017_ADDR, write_buf, 1, read_buf, 1);
+    assert(ret == 0);
 }
 
 
 
 
 static void config_instance_deferred(
-        struct Pot_Instance     * p_inst,
-        struct Pot_Instance_Cfg * p_cfg)
+        struct Button_Instance     * p_inst,
+        struct Button_Instance_Cfg * p_cfg)
 {
 
 }
@@ -464,8 +546,6 @@ static void q_init_instance_event(struct Button_Instance_Cfg * p_cfg)
 
 static void on_button_was_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
 
-    gpio_pin_interrupt_configure_dt(&button_input, GPIO_INT_DISABLE);
-
     struct Button_Instance * p_inst = CONTAINER_OF(cb, struct Button_Instance, button_pressed_gpio_cb);
 
     struct Button_SM_Evt evt = {
@@ -473,7 +553,6 @@ static void on_button_was_pressed(const struct device *dev, struct gpio_callback
     }; 
 
     q_sm_event(p_inst, &evt);
-    // Queue event to read the i/o expander over i2c and begin debounce process. When that is done we update whatever information we need to take care of. 
 
 }
 
@@ -481,15 +560,16 @@ static void on_button_was_pressed(const struct device *dev, struct gpio_callback
 
 static bool handle_do_debounce(struct Button_Instance * p_inst)
 {
-    uint8_t stateA, stateB;
+    uint8_t btn_state[2];
 
     // Read Port A
-    i2c_write_read(i2c_dev, MCP23017_ADDR, MCP23017_GPIOA, 1, &stateA, 1);
+    i2c_write_read(i2c_dev, MCP23017_ADDR, MCP23017_GPIOA, 1, &btn_state[0], 1);
 
     // Read Port B
-    i2c_write_read(i2c_dev, MCP23017_ADDR, MCP23017_GPIOB, 1, &stateB, 1);
+    i2c_write_read(i2c_dev, MCP23017_ADDR, MCP23017_GPIOB, 1, &btn_state[1], 1);
 
-    if (stateA == p_inst->debounce.portA_state && stateB == p_inst->debounce.portB_state) {
+    if (btn_state[0] == p_inst->debounce.state[0] && 
+        btn_state[1] == p_inst->debounce.state[1]) {
         return true; 
     } else {
         return false; 
@@ -501,18 +581,23 @@ static void read_button_press_i2c(struct Button_Instance * p_inst)
 {
 
     uint8_t buf[1]; 
-    uint8_t stateA, stateB;
+    uint8_t btn_state[2];
 
     // Read Port A
     buf[0] = MCP23017_GPIOA;
-    i2c_write_read(i2c_dev, MCP23017_ADDR, buf, 1, &stateA, 1);
+    i2c_write_read(i2c_dev, MCP23017_ADDR, buf, 1, &btn_state[0], 1);
 
     // Read Port B
     buf[0] = MCP23017_GPIOB;
-    i2c_write_read(i2c_dev, MCP23017_ADDR, buf, 1, &stateB, 1);
+    i2c_write_read(i2c_dev, MCP23017_ADDR, buf, 1, &btn_state[1], 1);
 
-    p_inst->debounce.portA_state = stateA;
-    p_inst->debounce.portB_state = stateB;
+    /*  Save the state of the button press of each port. 
+        Debounce routine will compare a new reading to this previous state.
+     */ 
+
+    for (int i = 0; i < 2; i++) {
+        p_inst->debounce.state[i] = btn_state[i];
+    }
 
 }
 
@@ -527,7 +612,7 @@ static void on_debounce_timer_expiry(struct k_timer * p_timer)
 
     q_sm_event(p_inst, &evt);
     
-    gpio_pin_interrupt_configure_dt(&button_input, GPIO_INT_EDGE_TO_ACTIVE);
+    // gpio_pin_interrupt_configure_dt(&button_input, GPIO_INT_EDGE_TO_ACTIVE);
 }
 
 
@@ -620,8 +705,10 @@ static void state_init_run(void * o)
      * Init_Instance event the data contains the intance cfg. */
     struct Button_SM_Evt_Sig_Init_Instance * p_ii = &p_evt->data.init_inst;
     
-    expander_i2c_init(p_inst); 
     button_gpio_init(p_inst);
+
+    MCP23017_i2c_init(p_inst);
+
     broadcast_instance_initialized(p_inst, p_ii->cfg.cb);
     smf_set_state(SMF_CTX(p_sm), &states[run]);
 }
@@ -666,8 +753,8 @@ static void state_run_run(void * o)
             if (db) {
                 struct Button_SM_Evt db_evt = {
                     .sig = k_Button_SM_Evt_Sig_Debounced,
-                    .data.debounced.portA_state = p_inst->debounce.portA_state,
-                    .data.debounced.portB_state = p_inst->debounce.portB_state,
+                    .data.debounced.btn_state[0] = p_inst->debounce.state[0],
+                    .data.debounced.btn_state[1] = p_inst->debounce.state[1],
                 };
                 q_sm_event(p_inst, &db_evt);
             }
@@ -675,10 +762,18 @@ static void state_run_run(void * o)
         break; 
 
         case k_Button_SM_Evt_Sig_Debounced:
-            test++;
+
+            /* A successful debounce has occurred. p_debounced contains the debounced button states. */
+
             struct Button_SM_Evt_Sig_Debounced * p_debounced = &p_evt->data.debounced;
 
-            broadcast_event_to_listeners(p_inst, p_debounced);
+            struct Button_Evt btn_pressed = {
+                .sig = k_Button_Evt_Sig_Pressed,
+                .data.pressed.state[0] = p_debounced->btn_state[0],
+                .data.pressed.state[1] = p_debounced->btn_state[1],
+            }; 
+
+            broadcast_event_to_listeners(p_inst, &btn_pressed);
 
             break;
         case k_Button_SM_Evt_Sig_Released:
@@ -747,7 +842,6 @@ static void thread(void * p_1, /* struct DAC_Instance* */
         void * p_2_unused, void * p_3_unused)
 {
     struct Button_Instance * p_inst = p_1;
-    // printk("DAC Thread Start. \n"); 
     /* NOTE: smf_set_initial() executes the entry state. */
     struct smf_ctx * p_sm = &p_inst->sm;
     smf_set_initial(SMF_CTX(p_sm), &states[init]);

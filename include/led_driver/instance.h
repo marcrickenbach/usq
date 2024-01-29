@@ -78,6 +78,7 @@ struct LED_Driver_Instance{
     struct{
         uint16_t current;
     }led_value;
+
 };
 #ifdef __cplusplus
 }

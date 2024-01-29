@@ -77,8 +77,7 @@ struct Button_Instance{
 
     /* Debounce struct and timer*/
     struct{
-        uint8_t portA_state;
-        uint8_t portB_state;
+        uint8_t state[2];
     }debounce;
 
     struct{

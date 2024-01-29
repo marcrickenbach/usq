@@ -53,6 +53,7 @@
 |                       When sequencer is ready to write, the sequencer thread broadcasts to its listener that is listening for a write ready signal.  
 |                       When the sequencer listener hears this signal, it calls a fn in main (on_led_write_ready) that posts a SM event to the LED_Driver thread. 
 |                       Event sends along (16 bit?)
+|                   (2) PWM Signal is initiated in its own init function.
 |
 |       NOTES:      note: need some check to see if we clear everything and write, or just add to what's existing.
 |                         The idea is to have dimly lit LEDs for all active channels on both sequencer channels

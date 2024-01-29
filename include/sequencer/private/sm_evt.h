@@ -75,9 +75,7 @@ struct Sequencer_SM_Evt_Sig_UART_RX_RECEIVED{
 
 /* Data signal k_Seq_SM_Evt_Sig_Button_Pressed can generate. */
 struct Sequencer_SM_Evt_Sig_Button_Pressed{
-    uint8_t portA_state;
-    uint8_t portB_state;
-    int64_t timestamp;
+    uint8_t state[2];
 };
 
 

@@ -43,6 +43,9 @@ extern “C” {
  */
 void LED_Driver_Init_Instance(struct LED_Driver_Instance_Cfg * p_cfg);
 
+void write_led_data_to_spi(bool channel, uint16_t step, uint16_t offset, uint16_t value);
+
+
 /**
  * Deinitialize an instance.
  * @param[in] p_dcfg Pointer to the filled-in deconfiguration struct. See the

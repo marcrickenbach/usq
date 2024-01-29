@@ -40,6 +40,9 @@
         rst-trigger-low-gpios = <&gpiob 8 GPIO_PULL_DOWN>;
 
         mode-global-gpios = <&gpiob 5 GPIO_PULL_DOWN>;
+
+        led-le-gpios = <&gpiob 12 GPIO_PULL_DOWN>;
+        led-blank-gpios = <&gpiob 14 GPIO_PULL_DOWN>;
     };
 
 
@@ -116,10 +119,9 @@
 &spi2 {
     // compatible = "st,stm32-spi";
     status = "okay"; 
-    cs-gpios = < &gpiob 12 GPIO_ACTIVE_LOW >;
-    pinctrl-0 = <&spi2_mosi_pb15 &spi2_nss_pb12 &spi2_sck_pb13>;
+    pinctrl-0 = <&spi2_mosi_pb15 &spi2_sck_pb13>;
     pinctrl-names = "default";
-    clock-frequency = <5625000>;
+    clock-frequency = <5625000>; //<1406250>;
     label = "SPI2";
     spidev: spi-dev@0 {
         compatible = "zephyr,spi-dev";
@@ -132,9 +134,11 @@
 };
 
 &i2c2 {
-    status = "okay";
+    compatible = "st,stm32-i2c-v1";
     pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb3>;
     pinctrl-names = "default";
+    clock-frequency = <400000>; // 400 kHz
+    status = "okay";
 };
 
 &i2c3 {
@@ -168,7 +172,7 @@
 };
 
 
-
+// TIMER 1 with PWM
 &timers1 {
     status = "okay"; 
     led_pwm: pwm {
@@ -179,6 +183,7 @@
         #pwm-cells = <3>;
     };
 };
+
 
 &timers2 {
     status = "okay";
@@ -197,6 +202,19 @@
     st,countermode = <0>;
     compatible = "st,stm32-timers";
     counter_timer2: counter {
+        compatible = "st,stm32-counter";
+        status = "okay";
+    };
+};
+
+//Timer 4 for LED Driver Blank Pin Counter
+
+&timers4 {
+    status = "okay";
+    st,prescaler = <90>; // 90MHz -> 1MHz
+    st,countermode = <0>;
+    compatible = "st,stm32-timers";
+    counter_timer3: counter {
         compatible = "st,stm32-counter";
         status = "okay";
     };

@@ -11,6 +11,9 @@
 #include <assert.h>
 #include "gpio_config.h"
 
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(gpio);
+
 K_THREAD_STACK_DEFINE(gpio_config_stack, GPIO_CONFIG_STACK_SIZE);
 
 // Gate Outs
@@ -42,6 +45,10 @@ const struct gpio_dt_spec adc_bank_4 = GPIO_DT_SPEC_GET(GPIO_PINS, adc_addr_bank
 
 const struct gpio_dt_spec sw_bank_0 = GPIO_DT_SPEC_GET(GPIO_PINS, sw_addr_bank_0_gpios); 
 const struct gpio_dt_spec sw_bank_1 = GPIO_DT_SPEC_GET(GPIO_PINS, sw_addr_bank_1_gpios); 
+
+
+// LED Driver Latch Enable Pin
+const struct gpio_dt_spec led_le = GPIO_DT_SPEC_GET(GPIO_PINS, led-le-gpios); 
  
 
 
@@ -67,7 +74,8 @@ void gpio_config_thread (void * p1, void * p2, void * p3) {
             !device_is_ready(adc_bank_3.port)       ||
             !device_is_ready(adc_bank_4.port)       ||
             !device_is_ready(sw_bank_0.port)        ||
-            !device_is_ready(sw_bank_1.port)  
+            !device_is_ready(sw_bank_1.port)        ||
+            !device_is_ready(led_le.port)  
         ){
         
         printk("GPIO Ready: Failed\n");
@@ -101,15 +109,15 @@ void gpio_config_thread (void * p1, void * p2, void * p3) {
             // gpio_pin_configure_dt(&adc_bank_4, GPIO_OUTPUT_INACTIVE)     ||
             // FIXME: Pin above is in conflict with usart2 on the nucleo board. Uncomment when porting to custom board. 
             gpio_pin_configure_dt(&sw_bank_0, GPIO_OUTPUT_INACTIVE)      ||
-            gpio_pin_configure_dt(&sw_bank_1, GPIO_OUTPUT_INACTIVE)     
+            gpio_pin_configure_dt(&sw_bank_1, GPIO_OUTPUT_INACTIVE)      
             ){
 
-        printk("GPIO Config: Failed\n");
+        LOG_ERR("GPIO Config: Failed");
         return; 
 
     } else {
 
-        printk("GPIO Config: OK\n");
+        LOG_INF("GPIO Config: OK\n");
 
     }
 

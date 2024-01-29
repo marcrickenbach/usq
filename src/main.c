@@ -48,7 +48,7 @@
 
 /* Declare threads, queues, and other data structures for pot instance. */
 static struct k_thread pot_thread;
-#define POT_THREAD_STACK_SZ_BYTES   512
+#define POT_THREAD_STACK_SZ_BYTES   1024
 K_THREAD_STACK_DEFINE(pot_thread_stack, POT_THREAD_STACK_SZ_BYTES);
 #define MAX_QUEUED_POT_SM_EVTS  10
 #define POT_SM_QUEUE_ALIGNMENT  4
@@ -58,7 +58,7 @@ static struct Pot_Instance pot_inst;
 
 /* Declare threads, queues, and other data structures for DAC instance. */
 static struct k_thread dac_thread;
-#define DAC_THREAD_STACK_SZ_BYTES   512
+#define DAC_THREAD_STACK_SZ_BYTES   1024
 K_THREAD_STACK_DEFINE(dac_thread_stack, DAC_THREAD_STACK_SZ_BYTES);
 #define MAX_QUEUED_DAC_SM_EVTS  10
 #define DAC_SM_QUEUE_ALIGNMENT  4
@@ -68,7 +68,7 @@ static struct DAC_Instance dac_inst;
 
 /* Declare threads, queues, and other data structures for Sequencer instance. */
 static struct k_thread sequencer_thread;
-#define SEQUENCER_THREAD_STACK_SZ_BYTES   512
+#define SEQUENCER_THREAD_STACK_SZ_BYTES   1024
 K_THREAD_STACK_DEFINE(sequencer_thread_stack, SEQUENCER_THREAD_STACK_SZ_BYTES);
 #define MAX_QUEUED_SEQUENCER_SM_EVTS  10
 #define SEQUENCER_SM_QUEUE_ALIGNMENT  4
@@ -78,7 +78,7 @@ static struct Sequencer_Instance sequencer_inst;
 
 /* Declare threads, queues, and other data structures for LED Driver instance. */
 static struct k_thread led_driver_thread;
-#define LED_DRIVER_THREAD_STACK_SZ_BYTES   512
+#define LED_DRIVER_THREAD_STACK_SZ_BYTES   1024
 K_THREAD_STACK_DEFINE(led_driver_thread_stack, LED_DRIVER_THREAD_STACK_SZ_BYTES);
 #define MAX_QUEUED_LED_DRIVER_SM_EVTS  10
 #define LED_DRIVER_SM_QUEUE_ALIGNMENT  4
@@ -88,7 +88,7 @@ static struct LED_Driver_Instance led_driver_inst;
 
 /* Declare threads, queues, and other data structures for UART / MIDI instance. */
 static struct k_thread uart_thread;
-#define UART_THREAD_STACK_SZ_BYTES   512
+#define UART_THREAD_STACK_SZ_BYTES   1024
 K_THREAD_STACK_DEFINE(uart_thread_stack, UART_THREAD_STACK_SZ_BYTES);
 #define MAX_QUEUED_UART_SM_EVTS  10
 #define UART_SM_QUEUE_ALIGNMENT  4
@@ -98,7 +98,7 @@ static struct UART_Instance uart_inst;
 
 /* Declare threads, queues, and other data structures for Button instance. */
 static struct k_thread button_thread;
-#define BUTTON_THREAD_STACK_SZ_BYTES   512
+#define BUTTON_THREAD_STACK_SZ_BYTES   1024
 K_THREAD_STACK_DEFINE(button_thread_stack, BUTTON_THREAD_STACK_SZ_BYTES);
 #define MAX_QUEUED_BUTTON_SM_EVTS  100
 #define BUTTON_SM_QUEUE_ALIGNMENT  4
@@ -259,13 +259,16 @@ static void on_midi_write_ready(struct UART_Evt *p_evt)
  * ********************/
 static void on_led_write_ready(struct LED_Driver_Evt *p_evt) 
 {
-    assert(p_evt->sig == k_LED_Driver_Evt_Sig_Write_Ready);
+    assert(p_evt->sig == k_Seq_Evt_Sig_LED_Write_Ready);
 
-    struct LED_Driver_SM_Evt_Sig_LED_Driver_Write * p_write = (struct LED_Driver_SM_Evt_Sig_LED_Driver_Write *) &p_evt->data.write;
+    // struct LED_Driver_SM_Evt_Sig_LED_Driver_Write * p_write = (struct LED_Driver_SM_Evt_Sig_LED_Driver_Write *) &p_evt->data.write;
 
     struct LED_Driver_SM_Evt evt = {
             .sig = k_LED_Driver_SM_Evt_LED_Driver_Write,
-            .data.write = *p_write
+            .data.write.channel = p_evt->data.write.channel,
+            .data.write.step = p_evt->data.write.step,
+            .data.write.offset = p_evt->data.write.offset,
+            .data.write.val = p_evt->data.write.val
     };
 
     k_msgq_put(&led_driver_sm_evt_q, &evt, K_NO_WAIT); 
@@ -278,14 +281,12 @@ static void on_led_write_ready(struct LED_Driver_Evt *p_evt)
 
 static void on_button_press (struct Button_Evt *p_evt) 
 {
-    printk("hola\n"); 
     assert(p_evt->sig == k_Button_Evt_Sig_Pressed);
 
     struct Sequencer_SM_Evt evt = {
         .sig = k_Seq_SM_Evt_Sig_Button_Pressed,
-        .data.btn_pressed.portA_state = p_evt->data.pressed.portA_state,
-        .data.btn_pressed.portB_state = p_evt->data.pressed.portB_state,
-        .data.btn_pressed.timestamp = p_evt->data.pressed.timestamp
+        .data.btn_pressed.state[0] = p_evt->data.pressed.state[0],
+        .data.btn_pressed.state[1] = p_evt->data.pressed.state[1]
     };
 
     k_msgq_put(&sequencer_sm_evt_q, &evt, K_NO_WAIT);
@@ -364,9 +365,8 @@ static void on_button_press (struct Button_Evt *p_evt)
     Button_Init_Instance(&button_inst_cfg);
     wait_on_instance_initialized();
 
-
     static struct Button_Listener button_press_lsnr;
-    struct UART_Listener_Cfg button_press_lsnr_cfg = {
+    struct Button_Listener_Cfg button_press_lsnr_cfg = {
         .p_inst = &button_inst,
         .p_lsnr = &button_press_lsnr, 
         .sig     = k_Button_Evt_Sig_Pressed,

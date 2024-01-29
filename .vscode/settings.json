@@ -52,6 +52,13 @@
         "uart.h": "c",
         "dma_stm32.h": "c",
         "*.tcc": "c",
-        "istream": "c"
+        "istream": "c",
+        "array": "c",
+        "string_view": "c",
+        "functional": "c",
+        "utility": "c",
+        "variant": "c",
+        "smf.h": "c",
+        "button.h": "c"
     },
 }

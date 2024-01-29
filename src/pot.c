@@ -68,7 +68,7 @@
 #endif
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(pot, CONFIG_FKMG_POT_LOG_LEVEL);
+LOG_MODULE_REGISTER(pot);
 
 /* *****************************************************************************
  * Structs
@@ -538,10 +538,10 @@ static void start_conversion_timer(struct Pot_Instance * p_inst)
 static void init_adc_device (struct Pot_Instance * p_inst) {
 
     if (!device_is_ready(adc_dev)) {
-        printk("ADC Configuration: Device Is NOT Ready.\n");
+        LOG_ERR("ADC Configuration: Device Is NOT Ready.");
         return; 
     } else {
-        // printk("ADC Device is READY\n"); 
+        // LOG_INF("ADC Device is READY"); 
 
         struct adc_channel_cfg adc_config = {
             .channel_id = ADC_CHANNEL,
@@ -551,10 +551,10 @@ static void init_adc_device (struct Pot_Instance * p_inst) {
         }; 
 
         if (adc_channel_setup(adc_dev, &adc_config) != 0) {
-            printk("ADC Device set up: Failed\n");
+            LOG_ERR("ADC Device set up: Failed");
             return; 
         } else {
-            // printk("ADC Device set up: PASSED\n");
+            // LOG_INF("ADC Device set up: PASSED");
         }
     }
 
@@ -571,9 +571,9 @@ static void init_adc_gpios(struct Pot_Instance * p_inst)
             gpio_pin_configure_dt(&adc_bank_3, GPIO_OUTPUT_INACTIVE)     ||
             gpio_pin_configure_dt(&adc_bank_4, GPIO_OUTPUT_INACTIVE)
     ){
-        // printk("ADC GPIO Config: FAILED\n"); 
+        LOG_ERR("ADC GPIO Config: FAILED"); 
     } else {
-        // printk("ADC GPIO Config: PASSED\n"); 
+        // LOG_INF("ADC GPIO Config: PASSED"); 
     }
 }
 
@@ -615,17 +615,17 @@ static void advance_adc_mux (enum Pot_Id id)
     uint32_t mask_val = 0;
 
     if (gpio_port_set_masked_raw(GPIOC_PORT, MUX_BANK_MASK, 0x0000)) {
-        printk("Error Setting Mux Banks Low\n"); 
+        LOG_ERR("Error Setting Mux Banks Low"); 
     }
 
     if (gpio_port_set_masked_raw(GPIOB_PORT, MUX_ADDR_MASK, addressBits & MUX_ADDR_MASK)) {
-         printk("Error Setting Mux Address Pins\n"); 
+         LOG_ERR("Error Setting Mux Address Pins"); 
     }
 
     mask_val = (1U << ((potAddress >> 4) + MUX_GPIO_OFFSET)); 
           
     if (gpio_port_set_masked_raw(GPIOC_PORT, MUX_BANK_MASK, mask_val)) {
-        printk("Error Setting Mux Bank High\n"); 
+        LOG_ERR("Error Setting Mux Bank High"); 
     } 
 };
 
@@ -852,7 +852,6 @@ static void thread(void * p_1, /* struct Pot_Instance* */
         void * p_2_unused, void * p_3_unused)
 {
     struct Pot_Instance * p_inst = p_1;
-    // printk("POT Thread Start. \n"); 
     /* NOTE: smf_set_initial() executes the entry state. */
     struct smf_ctx * p_sm = &p_inst->sm;
     smf_set_initial(SMF_CTX(p_sm), &states[init]);

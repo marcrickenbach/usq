@@ -57,9 +57,7 @@ struct Button_Evt_Data_Instance_Initialized{
 
 /* Data signal k_Button_Evt_Sig_Pressed can generate. */
 struct Button_Evt_Data_Pressed{
-    uint8_t portA_state;
-    uint8_t portB_state;
-    int64_t timestamp;
+    uint8_t state[2];
 };
 
 /* Events (i.e. signal + signal's data if any) that can be generated. */
