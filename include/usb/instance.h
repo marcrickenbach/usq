@@ -1,5 +1,5 @@
 /** ****************************************************************************
- * @brief Button instance interface.
+ * @brief USB instance interface.
  *
  * An instance is the root instantiation of the implementation. An instance
  * contains everything required to declare and define all the threads, queues,
@@ -7,8 +7,8 @@
  * only one is required or even possible.
  */
 
-#ifndef FKMG_BUTTON_INSTANCE_H
-#define FKMG_BUTTON_INSTANCE_H
+#ifndef FKMG_USB_INSTANCE_H
+#define FKMG_USB_INSTANCE_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,10 +34,10 @@ extern "C" {
  * Instance
  */
 
-struct Button_Instance{
+struct USB_Instance{
     #if CONFIG_FKMG_DAC_RUNTIME_ERROR_CHECKING
     /* Error status. */
-	enum Button_Err_Id err;
+	enum USB_Err_Id err;
     #endif
 
     /* Threads used. */
@@ -57,11 +57,11 @@ struct Button_Instance{
 	struct smf_ctx sm;
 
     /* Current sm event. */
-    struct Button_SM_Evt sm_evt;
+    struct USB_SM_Evt sm_evt;
 
     /* Singly linked lists to keep track of things. */
     struct{
-        sys_slist_t listeners[k_Button_Evt_Sig_Cnt];
+        sys_slist_t listeners[k_USB_Evt_Sig_Cnt];
     }list;
 
     /* For adding this instance to singly linked lists. */
@@ -70,10 +70,10 @@ struct Button_Instance{
     }node;
 
     /* Current Channel. */
-    enum Button_Id id;
+    enum USB_Id id;
 
     /* GPIO Interrupt Callback*/
-    struct gpio_callback button_pressed_gpio_cb;
+    struct gpio_callback USB_pressed_gpio_cb;
 
     uint8_t read_buf[4]; 
     uint8_t btn_data[2];
@@ -93,4 +93,4 @@ struct Button_Instance{
 }
 #endif
 
-#endif /* FKMG_BUTTON_INSTANCE_H */
+#endif /* FKMG_USB_INSTANCE_H */

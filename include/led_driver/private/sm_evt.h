@@ -35,7 +35,8 @@ enum LED_Driver_SM_Evt_Sig{
     #endif
     // k_Seq_Evt_Sig_Pot_Changed,
     k_LED_Driver_SM_Evt_LED_Driver_Write,
-
+    k_LED_Driver_SM_Evt_Change_Default_Levels,
+    k_LED_Driver_SM_Evt_LED_Driver_Reset_LED,
     k_LED_Driver_SM_Evt_Sig_End,                           // Exclusive
     k_LED_Driver_SM_Evt_Sig_Max = k_LED_Driver_SM_Evt_Sig_End - 1,// Inclusive
     k_LED_Driver_SM_Evt_Sig_Lst = k_LED_Driver_SM_Evt_Sig_End - 1,// Inclusive
@@ -49,20 +50,29 @@ struct LED_Driver_SM_Evt_Sig_Init_Instance{
     struct LED_Driver_Instance_Cfg cfg;
 };
 
-/* Data signal k_LED_Driver_SM_Evt_LED_Driver_Write can generate. */
-struct LED_Driver_SM_Evt_Sig_LED_Driver_Write{
+/* Data signal k_LED_Driver_SM_Evt_LED_Driver_Reset_LED can generate. */
+struct LED_Driver_SM_Evt_Sig_LED_Driver_Reset_LED{
     bool channel;
     uint16_t step;
     uint8_t offset;
     uint16_t val; 
 };
 
+struct LED_Driver_SM_Evt_Sig_Change_Default_Levels{
+    uint8_t btn_id;
+    bool armed;
+    uint8_t offset; 
+    uint8_t step; 
+    bool edge; 
+};
+
 /* Events (i.e. signal + signal's data if any) Seq State Machine generates. */
 struct LED_Driver_SM_Evt{
 	enum LED_Driver_SM_Evt_Sig sig;
 	union LED_Driver_SM_Evt_Data{
-        struct LED_Driver_SM_Evt_Sig_Init_Instance  init_inst;
-        struct LED_Driver_SM_Evt_Sig_LED_Driver_Write   write;
+        struct LED_Driver_SM_Evt_Sig_Init_Instance          init_inst;
+        struct LED_Driver_SM_Evt_Sig_LED_Driver_Reset_LED   reset;
+        struct LED_Driver_SM_Evt_Sig_Change_Default_Levels  def_lvl;
 	}data;
 };
 

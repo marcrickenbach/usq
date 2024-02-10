@@ -34,6 +34,7 @@ enum LED_Driver_Evt_Sig{
     k_LED_Driver_Evt_Sig_Instance_Deinitialized,
     #endif
     k_LED_Driver_Evt_Sig_Write_Ready,
+    k_LED_Driver_Evt_Sig_Change_Default_Levels,
     k_LED_Driver_Evt_Sig_End,                        // Exclusive
     k_LED_Driver_Evt_Sig_Max = k_LED_Driver_Evt_Sig_End - 1,// Inclusive
     k_LED_Driver_Evt_Sig_Lst = k_LED_Driver_Evt_Sig_End - 1,// Inclusive
@@ -65,6 +66,10 @@ struct LED_Driver_Evt_Write_Ready{
     uint16_t val; 
 };
 
+/* Data signal k_LED_Driver_Evt_Sig_Change_Default_Levels can generate*/
+struct LED_Driver_Evt_Change_Default_Levels{
+    uint16_t * p_levels;
+};
 
 /* Events (i.e. signal + signal's data if any) that can be generated. */
 struct LED_Driver_Evt{

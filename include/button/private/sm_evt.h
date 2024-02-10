@@ -33,9 +33,7 @@ enum Button_SM_Evt_Sig{
 	k_Button_SM_Evt_Sig_Deinit_Instance,
     #endif
 	k_Button_SM_Evt_Sig_Pressed,
-    k_Button_SM_Evt_Sig_Released,
-    k_Button_SM_Evt_Sig_Do_Debounce,
-    k_Button_SM_Evt_Sig_Debounced,
+    k_Button_SM_Evt_Sig_Reset_Interrupt,
 
     k_Button_SM_Evt_Sig_End,                           // Exclusive
     k_Button_SM_Evt_Sig_Max = k_Button_SM_Evt_Sig_End - 1,// Inclusive
@@ -52,16 +50,17 @@ struct Button_SM_Evt_Sig_Init_Instance{
 
 /* Data signal k_Button_SM_Evt_Sig_Pressed can generate. */
 struct Button_SM_Evt_Sig_Pressed{
-
+    uint8_t btn_state[4];
 };
 
-
-/* Data signal k_Button_SM_Evt_Sig_Pressed can generate. */
-struct Button_SM_Evt_Sig_Debounced{
+struct Button_SM_Evt_Sig_Ready_Parse{
     uint8_t btn_state[2];
 };
 
-
+struct Button_SM_Evt_Sig_Parsed_Signal{
+    uint8_t btn_id;
+    bool port;
+};
 
 
 /* Events (i.e. signal + signal's data if any) Button State Machine generates. */
@@ -70,7 +69,7 @@ struct Button_SM_Evt{
 	union Button_SM_Evt_Data{
         struct Button_SM_Evt_Sig_Init_Instance  init_inst;
         struct Button_SM_Evt_Sig_Pressed        pressed;
-        struct Button_SM_Evt_Sig_Debounced      debounced;
+        struct Button_SM_Evt_Sig_Parsed_Signal  parse_signal;
 	}data;
 };
 

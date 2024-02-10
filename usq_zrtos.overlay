@@ -4,13 +4,14 @@
 #include <dt-bindings/spi/spi.h>
 #include <dt-bindings/timer/stm32-timer.h>
 #include <dt-bindings/dma/stm32_dma.h>
+#include <dt-bindings/i2c/i2c.h>
 
 
 /{
     zephyr,user {
 
-        gate-high-gpios     =   <&gpioc 10 GPIO_ACTIVE_HIGH>;
-        gate-low-gpios      =   <&gpioa 15 GPIO_ACTIVE_HIGH>;
+        gate-high-gpios      =   <&gpioa 15 GPIO_ACTIVE_HIGH>;
+        gate-low-gpios      =   <&gpioc 10 GPIO_ACTIVE_HIGH>;
 
         led-17-gpios        =   <&gpioc 11 GPIO_ACTIVE_HIGH>;
         led-18-gpios        =   <&gpioc 12 GPIO_ACTIVE_HIGH>;
@@ -45,12 +46,13 @@
         led-blank-gpios = <&gpiob 14 GPIO_PULL_DOWN>;
     };
 
+    chosen {
+        zephyr,console = &usart1;
+        zephyr,shell-uart = &usart1;
+        zephyr,uart-mcumgr = &usart1;
+    };
 
 };
-
-// &{/chosen} {
-
-// };
 
 /**************************************** 
  * Disable Nucleo pins for btn and led */
@@ -70,20 +72,28 @@
 };
 
 &pll {
-	div-m = <4>;
-	mul-n = <180>;
+    /* FIXME: Former values. The values below are the highest possible values to get a precise 48MHz clock for the USB on PLLQ. We could get the clock to 180MHz if we could derive the USB clock from the PLLSAIP, but Zephyr doesn't yet support this. If we need these extra MHz revisit this, for now probably ok. */
+	// div-m = <4>;
+	// mul-n = <180>;
+	// div-p = <2>;
+	// div-q = <8>;
+	// clocks = <&clk_hse>;
+	// status = "okay";
+    div-m = <8>;
+	mul-n = <336>;
 	div-p = <2>;
-	div-q = <8>;
+	div-q = <7>;
 	clocks = <&clk_hse>;
 	status = "okay";
 };
 
+
 &rcc {
 	clocks = <&pll>;
-	clock-frequency = <DT_FREQ_M(180)>;
+	clock-frequency = <DT_FREQ_M(168)>;
 	ahb-prescaler = <1>;
-	apb1-prescaler = <4>;
-	apb2-prescaler = <2>;
+	apb1-prescaler = <4>; // was 4 
+	apb2-prescaler = <2>; // was 2
 };
 
 
@@ -123,11 +133,13 @@
     pinctrl-names = "default";
     clock-frequency = <5625000>; //<1406250>;
     label = "SPI2";
+    dmas = <&dma1 4 0 0x20040 0x03>; /* DMA1 Stream4 Channel3 for TX */
+    dma-names = "tx";
     spidev: spi-dev@0 {
         compatible = "zephyr,spi-dev";
         reg = <0>;
     };
-};
+}; 
 
 &i2c1 {
     status = "disabled";
@@ -138,6 +150,9 @@
     pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb3>;
     pinctrl-names = "default";
     clock-frequency = <400000>; // 400 kHz
+    dmas =  <&dma1 2 7 0x20480 0x03>, /* RX, DMA1 Stream 2 Channel 7, High priority, Byte size, Memory increment */
+            <&dma1 7 7 0x20440 0x03>; /* TX, DMA1 Stream 7 Channel 7, High priority, Byte size, Memory increment */
+    dma-names = "rx", "tx";
     status = "okay";
 };
 
@@ -150,21 +165,25 @@
 };
 
 &usbotg_fs {
+    compatible = "st,stm32-otgfs"; 
     pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
     pinctrl-names = "default";
+    // vbus-gpios = < &label >;
     status = "okay"; 
 };
 
 &usart1 {
     compatible = "st,stm32-uart";
-    dmas = <&dma2 2 2 0x400 0x03>, <&dma2 2 7 0x400 0x03>;
-    dma-names = "tx", "rx";
     pinctrl-0 = <&usart1_rx_pa10 &usart1_tx_pa9>;
     pinctrl-names = "default";
-    current-speed = <31250>;
+    current-speed = <115200>;
     status = "okay"; 
 };
 
+
+&dma1 {
+    status="okay";
+};
 
 &dma2 {
     compatible = "st,stm32-dma-v1";

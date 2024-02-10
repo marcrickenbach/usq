@@ -92,26 +92,6 @@ static struct DAC_Instance * sm_ctx_to_instance(struct smf_ctx * p_sm_ctx)
  * Listener Utils
  * **************/
 
-#if CONFIG_FKMG_DAC_RUNTIME_ERROR_CHECKING
-static enum DAC_Err_Id check_listener_cfg_param_for_errors(
-        struct DAC_Listener_Cfg * p_cfg )
-{
-    if(!p_cfg
-    || !p_cfg->p_iface
-    || !p_cfg->p_lsnr) return(k_DAC_Err_Id_Configuration_Invalid);
-
-    /* Is signal valid? */
-    if(p_cfg->sig > k_DAC_Sig_Max)
-        return(k_DAC_Err_Id_Configuration_Invalid);
-
-    /* Is callback valid? */
-    if(!p_cfg->cb)
-        return(k_DAC_Err_Id_Configuration_Invalid);
-
-    return(k_DAC_Err_Id_None);
-}
-#endif
-
 static void clear_listener(struct DAC_Listener * p_lsnr)
 {
     memset(p_lsnr, 0, sizeof(*p_lsnr));
@@ -136,22 +116,6 @@ static void init_listener(struct DAC_Listener * p_lsnr)
 /* **************
  * Instance Utils
  * **************/
-
-#if CONFIG_FKMG_DAC_RUNTIME_ERROR_CHECKING
-static enum DAC_Err_Id check_instance_cfg_param_for_errors(
-        struct DAC_Instance_Cfg * p_cfg)
-{
-    if(!p_cfg
-    || !p_cfg->p_inst
-    || !p_cfg->task.sm.p_thread
-    || !p_cfg->task.sm.p_stack
-    || !p_cfg->msgq.p_sm_evts) return(k_DAC_Err_Id_Configuration_Invalid);
-
-    if(p_cfg->task.sm.stack_sz == 0) return(k_DAC_Err_Id_Configuration_Invalid);
-
-    return(k_DAC_Err_Id_None);
-}
-#endif
 
 static void add_instance_to_instances(
         struct DAC_Instance  * p_inst)
@@ -191,13 +155,11 @@ static void dac_device_init(void)
         }
 }
 
-// static void config_instance_deferred(
-//         struct Pot_Instance     * p_inst,
-//         struct Pot_Instance_Cfg * p_cfg)
-// {
-
-
-// }
+static void config_instance_deferred(
+        struct DAC_Instance     * p_inst,
+        struct DAC_Instance_Cfg * p_cfg)
+{
+}
 
 /* Since configuration starts on caller's thread, configure fields that require
  * immediate and/or inconsequential configuration and defer rest to be handled
@@ -227,9 +189,6 @@ static void init_instance(struct DAC_Instance * p_inst)
 {
     clear_instance(p_inst);
     init_instance_lists(p_inst);
-    #if CONFIG_FKMG_DAC_RUNTIME_ERROR_CHECKING
-    p_inst->err = k_DAC_Err_Id_None;
-    #endif
 }
 
 /* ************
@@ -254,32 +213,6 @@ static void init_module(void)
     md.initialized = true;
 }
 
-/* **************
- * Error Checking
- * **************/
-
-#if CONFIG_FKMG_DAC_RUNTIME_ERROR_CHECKING
-static void set_error(
-        struct DAC_Instance * p_inst,
-        enum DAC_Err_Id       err,
-        bool                  override)
-{
-    if(p_inst){
-        if((override                          )
-        || (p_inst->err == k_DAC_Err_Id_None )){
-            p_inst->err = err;
-        }
-    }
-}
-
-static bool errored(
-        struct DAC_Instance * p_inst,
-        enum DAC_Err_Id       err )
-{
-    set_error(p_inst, err, NO_OVERRIDE);
-    return(err != k_DAC_Err_Id_None);
-}
-#endif /* CONFIG_FKMG_DAC_RUNTIME_ERROR_CHECKING */
 
 /* ************
  * Broadcasting
@@ -649,15 +582,6 @@ void DAC_Init_Instance(struct DAC_Instance_Cfg * p_cfg)
     /* Get pointer to instance to configure. */
     struct DAC_Instance * p_inst = p_cfg->p_inst;
 
-    #if CONFIG_FKMG_DAC_RUNTIME_ERROR_CHECKING
-    /* Check instance configuration for errors. */
-    if(errored(p_inst, check_instance_cfg_param_for_errors(p_cfg))){
-        assert(false);
-        return;
-    }
-    #endif
-
-
     init_module();
     init_instance(p_inst);
     config_instance_immediate(p_inst, p_cfg);
@@ -668,26 +592,9 @@ void DAC_Init_Instance(struct DAC_Instance_Cfg * p_cfg)
     dac_device_init();
 }
 
-#if CONFIG_FKMG_DAC_ALLOW_SHUTDOWN
-void DAC_Deinit_Instance(struct DAC_Instance_Dcfg * p_dcfg)
-{
-    #error "Not implemented yet!"
-}
-#endif
 
 void DAC_Add_Listener(struct DAC_Listener_Cfg * p_cfg)
 {
-    #if CONFIG_FKMG_DAC_RUNTIME_ERROR_CHECKING
-    /* Get pointer to instance. */
-    struct DAC_Instance * p_inst = p_cfg->p_inst;
-
-    /* Check listener instance configuration for errors. */
-    if(errored(p_inst, check_listener_cfg_param_for_errors(p_cfg))){
-        assert(false);
-        return;
-    }
-    #endif
-
     struct DAC_Listener * p_lsnr = p_cfg->p_lsnr;
     init_listener(p_lsnr);
     config_listener(p_lsnr, p_cfg);
@@ -707,13 +614,6 @@ void dac_write_new_value(uint8_t ch, uint32_t val) {
 
 };
 
-
-#if CONFIG_FKMG_DAC_ALLOW_LISTENER_REMOVAL
-void DAC_Remove_Listener(struct DAC_Listener * p_lsnr)
-{
-    #error "Not implemented yet!"
-}
-#endif
 
 #if CONFIG_FKMG_DAC_NO_OPTIMIZATIONS
 #pragma GCC pop_options

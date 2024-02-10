@@ -68,8 +68,8 @@
 
 #define GPIO_PINS           DT_PATH(zephyr_user)
 
-#define FALLING_EDGE        0
-#define RISING_EDGE         1
+#define LOW_EDGE            0
+#define HIGH_EDGE           1
 
 #define GATE_HIGH           1
 #define GATE_LOW            0
@@ -79,12 +79,14 @@
 #define HALF_BRIGHTNESS     0x7FF
 #define QUARTER_BRIGHTNESS  0x3FF
 #define EIGHTH_BRIGHTNESS   0x1FF
-#define DIM_ARMED_STEP      0x1A
+#define DIM_ARMED_STEP      0x4B
 
-#define CHANNEL_STATE_ID  1
+#define LED_STEP            2
+
 
 // Control Button Debouncing
-#define DEBOUNCE_TIME_MS 50
+#define DEBOUNCE_TIME_MS    100
+
 
 /* *****************************************************************************
  * Debugging
@@ -109,28 +111,29 @@ static struct sequencer_module_data sequencer_md = {0};
 #define md sequencer_md
 
 // Variable for counter configuration. This is just in case we change our counter frequency down the line, we can always work with a correct value. 
-uint32_t counter_freq; 
+static uint32_t counter_freq; 
+
 
 /* *****************************************************************************
  * Device Structs
  */
 
-const struct gpio_dt_spec gates[NUMBER_OF_GATES] = {
+static const struct gpio_dt_spec gates[NUMBER_OF_GATES] = {
     GPIO_DT_SPEC_GET(GATE_PINS, gate_high_gpios), // Gate 0
     GPIO_DT_SPEC_GET(GATE_PINS, gate_low_gpios)   // Gate 1
 };
 
-const struct gpio_dt_spec playPauseA    = GPIO_DT_SPEC_GET(GPIO_PINS, pp_trigger_high_gpios); 
-const struct gpio_dt_spec playPauseB    = GPIO_DT_SPEC_GET(TRANSPORT_PINS, pp_trigger_low_gpios); 
-const struct gpio_dt_spec resetA        = GPIO_DT_SPEC_GET(TRANSPORT_PINS, rst_trigger_high_gpios);
-const struct gpio_dt_spec resetB        = GPIO_DT_SPEC_GET(TRANSPORT_PINS, rst_trigger_low_gpios); 
+static const struct gpio_dt_spec play_pause_a       = GPIO_DT_SPEC_GET(GPIO_PINS, pp_trigger_high_gpios); 
+static const struct gpio_dt_spec play_pause_b       = GPIO_DT_SPEC_GET(TRANSPORT_PINS, pp_trigger_low_gpios); 
+static const struct gpio_dt_spec reset_a            = GPIO_DT_SPEC_GET(TRANSPORT_PINS, rst_trigger_high_gpios);
+static const struct gpio_dt_spec reset_b            = GPIO_DT_SPEC_GET(TRANSPORT_PINS, rst_trigger_low_gpios); 
+static const struct gpio_dt_spec mode_btn           = GPIO_DT_SPEC_GET(GPIO_PINS, mode_global_gpios);
 
-const struct gpio_dt_spec play_led_high  = GPIO_DT_SPEC_GET(GPIO_PINS, led_17_gpios);
-const struct gpio_dt_spec reset_led_high  = GPIO_DT_SPEC_GET(GPIO_PINS, led_18_gpios);
-const struct gpio_dt_spec play_led_low  = GPIO_DT_SPEC_GET(GPIO_PINS, led_19_gpios);
-const struct gpio_dt_spec reset_led_low  = GPIO_DT_SPEC_GET(GPIO_PINS, led_20_gpios);
-
-const struct device *gpio_dev; 
+static const struct gpio_dt_spec play_led_high      = GPIO_DT_SPEC_GET(GPIO_PINS, led_17_gpios);
+static const struct gpio_dt_spec reset_led_high     = GPIO_DT_SPEC_GET(GPIO_PINS, led_18_gpios);
+static const struct gpio_dt_spec play_led_low       = GPIO_DT_SPEC_GET(GPIO_PINS, led_19_gpios);
+static const struct gpio_dt_spec reset_led_low      = GPIO_DT_SPEC_GET(GPIO_PINS, led_20_gpios);
+static const struct gpio_dt_spec mode_led           = GPIO_DT_SPEC_GET(GPIO_PINS, led_21_gpios);
 
 
 
@@ -197,10 +200,7 @@ static void reset_timer(struct Sequencer_Instance * p_inst,
 
 
 /* 
- * Most work here only gets done on a rising edge, i.e. the on part of the gate. 
- * The on-time is calculated as half the time delay between when this rising edge hits and the next gate. 
- * The delay_buffer variable in the instance is to keep track of this delay so we only have to calculate it once,
- * unless one of an active channel's pots sends a pot_change event, in which case we will recalculate the new delay time. 
+ * The on-time is calculated as half the time delay between when this rising edge hits and the next gate. The delay_buffer variable in the instance is to keep track of this delay so we only have to calculate it once, unless one of an active channel's pots sends a pot_change event, in which case we will recalculate the new delay time if it's below a certain threshold, that is, if there's enough time left in the current step to make it worth recalculating.
 */ 
 
 static uint16_t calculate_gate_timer_delay(struct Sequencer_Instance * p_inst, enum Sequencer_Id id, bool edge) 
@@ -210,7 +210,6 @@ static uint16_t calculate_gate_timer_delay(struct Sequencer_Instance * p_inst, e
     if (edge) {
         delay_val = p_inst->seq.time[next_step(p_inst, id)]; 
         delay_val = delay_val >> 1; 
-        // p_inst->seq.edge[id] = true; 
         p_inst->seq.delay_buffer[id] = delay_val; 
 
         return delay_val; 
@@ -298,13 +297,13 @@ static void config_instance_queues(
 }
 
 /* Forward reference */
-
 static void timer_x_callback (const struct device *timer_dev,
                               uint8_t chan_id, uint32_t ticks,
                               void *user_data); 
 static void timer_y_callback (const struct device *timer_dev,
                               uint8_t chan_id, uint32_t ticks,
                               void *user_data); 
+
 
 /* Set up hardware timers for main sequencers. */
 static void init_hardware_timers(struct Sequencer_Instance * p_inst,
@@ -358,38 +357,35 @@ static void init_hardware_timers(struct Sequencer_Instance * p_inst,
     p_inst->seq.edge[0] = 0; 
     p_inst->seq.edge[1] = 0; 
 
-    // counter_start(p_inst->timer.t[0]);
-    // counter_start(p_inst->timer.t[1]);
-
     return; 
 
 }
 
 
-static void on_transportA(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
-static void on_transportB(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
-static void on_resetA(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
-static void on_resetB(const struct device *dev, struct gpio_callback *cb, uint32_t pins); 
+static void on_transport_a(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
+static void on_transport_b(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
+static void on_reset_a(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
+static void on_reset_b(const struct device *dev, struct gpio_callback *cb, uint32_t pins); 
 
 
 
 static void transport_gpio_pin_config(void) {
-    int ret = gpio_pin_configure(playPauseA.port, playPauseA.pin, GPIO_INPUT | GPIO_PULL_DOWN) ;
+    int ret = gpio_pin_configure(play_pause_a.port, play_pause_a.pin, GPIO_INPUT | GPIO_PULL_DOWN) ;
     if (ret < 0) {
         LOG_ERR("Error: Failed to configure playPauseA pin");
     }
 
-    ret = gpio_pin_configure(playPauseB.port, playPauseB.pin, GPIO_INPUT | GPIO_PULL_DOWN) ;
+    ret = gpio_pin_configure(play_pause_b.port, play_pause_b.pin, GPIO_INPUT | GPIO_PULL_DOWN) ;
     if (ret < 0) {
         LOG_ERR("Error: Failed to configure playPauseB pin");
     }
 
-    ret = gpio_pin_configure(resetA.port, resetA.pin, GPIO_INPUT | GPIO_PULL_DOWN) ;
+    ret = gpio_pin_configure(reset_a.port, reset_a.pin, GPIO_INPUT | GPIO_PULL_DOWN) ;
     if (ret < 0) {
         LOG_ERR("Error: Failed to configure resetA pin");
     }
 
-    ret = gpio_pin_configure(resetB.port, resetB.pin, GPIO_INPUT | GPIO_PULL_DOWN) ;
+    ret = gpio_pin_configure(reset_b.port, reset_b.pin, GPIO_INPUT | GPIO_PULL_DOWN) ;
     if (ret < 0) {
         LOG_ERR("Error: Failed to configure resetB pin");
     }
@@ -398,6 +394,7 @@ static void transport_gpio_pin_config(void) {
         ||  !device_is_ready(play_led_low.port)
         ||  !device_is_ready(reset_led_high.port)
         ||  !device_is_ready(reset_led_low.port)
+        ||  !device_is_ready(mode_led.port)
         ){
         LOG_ERR("Control LEDs Setup: Failed");
         return; 
@@ -427,26 +424,33 @@ static void transport_gpio_pin_config(void) {
         return;
     }
 
+    ret = gpio_pin_configure_dt(&mode_led, GPIO_OUTPUT_LOW);
+    if (ret < 0) {
+        LOG_ERR("Could not configure Play Pause LED pin, %d", ret);
+        return;
+    }
+
+
 }
 
 
 static void transport_gpio_interrupt_config(void) {
-    int ret = gpio_pin_interrupt_configure(playPauseA.port, playPauseA.pin, GPIO_INT_EDGE_BOTH);
+    int ret = gpio_pin_interrupt_configure(play_pause_a.port, play_pause_a.pin, GPIO_INT_EDGE_BOTH);
     if (ret < 0) {
         LOG_ERR("Error: Failed to configure interrupt on playPauseA pin");
     }
 
-    ret = gpio_pin_interrupt_configure(playPauseB.port, playPauseB.pin, GPIO_INT_EDGE_BOTH);
+    ret = gpio_pin_interrupt_configure(play_pause_b.port, play_pause_b.pin, GPIO_INT_EDGE_BOTH);
     if (ret < 0) {
         LOG_ERR("Error: Failed to configure interrupt on playPauseB pin");
     }
 
-    ret = gpio_pin_interrupt_configure(resetA.port, resetA.pin, GPIO_INT_EDGE_BOTH);
+    ret = gpio_pin_interrupt_configure(reset_a.port, reset_a.pin, GPIO_INT_EDGE_BOTH);
     if (ret < 0) {
         LOG_ERR("Error: Failed to configure interrupt on resetA pin");
     }
 
-    ret = gpio_pin_interrupt_configure(resetB.port, resetB.pin, GPIO_INT_EDGE_BOTH);
+    ret = gpio_pin_interrupt_configure(reset_b.port, reset_b.pin, GPIO_INT_EDGE_BOTH);
     if (ret < 0) {
         LOG_ERR("Error: Failed to configure interrupt on resetB pin");
     }
@@ -457,29 +461,29 @@ static void transport_gpio_interrupt_config(void) {
 
 static void transport_gpio_callback_config(struct Sequencer_Instance * p_inst) {
     
-    gpio_init_callback(&p_inst->transport_gpio_1_cb, on_transportA, BIT(playPauseA.pin));
-    gpio_init_callback(&p_inst->transport_gpio_2_cb, on_transportB, BIT(playPauseB.pin));
-    gpio_init_callback(&p_inst->transport_gpio_1_rst_cb, on_resetA, BIT(resetA.pin));
-    gpio_init_callback(&p_inst->transport_gpio_2_rst_cb, on_resetB, BIT(resetB.pin));
+    gpio_init_callback(&p_inst->transport_gpio_1_cb, on_transport_a, BIT(play_pause_a.pin));
+    gpio_init_callback(&p_inst->transport_gpio_2_cb, on_transport_b, BIT(play_pause_b.pin));
+    gpio_init_callback(&p_inst->transport_gpio_1_rst_cb, on_reset_a, BIT(reset_a.pin));
+    gpio_init_callback(&p_inst->transport_gpio_2_rst_cb, on_reset_b, BIT(reset_b.pin));
 
 
 
-    int ret = gpio_add_callback(playPauseA.port, &p_inst->transport_gpio_1_cb);
+    int ret = gpio_add_callback(play_pause_a.port, &p_inst->transport_gpio_1_cb);
     if (ret < 0) {
         LOG_ERR("Error: Failed to add callback on playPauseA pin");
     }
 
-    ret = gpio_add_callback(playPauseB.port, &p_inst->transport_gpio_2_cb);
+    ret = gpio_add_callback(play_pause_b.port, &p_inst->transport_gpio_2_cb);
     if (ret < 0) {
         LOG_ERR("Error: Failed to add callback on playPauseB pin");
     }
 
-    ret = gpio_add_callback(resetA.port, &p_inst->transport_gpio_1_rst_cb);
+    ret = gpio_add_callback(reset_a.port, &p_inst->transport_gpio_1_rst_cb);
     if (ret < 0) {
         LOG_ERR("Error: Failed to add callback on resetA pin");
     }
 
-    ret = gpio_add_callback(resetB.port, &p_inst->transport_gpio_2_rst_cb);
+    ret = gpio_add_callback(reset_b.port, &p_inst->transport_gpio_2_rst_cb);
     if (ret < 0) {
         LOG_ERR("Error: Failed to add callback on resetB pin");
     }
@@ -493,10 +497,10 @@ static void transport_gpio_init(struct Sequencer_Instance * p_inst) {
     
     int ret = 0; 
 
-    if (!device_is_ready(playPauseA.port) ||
-        !device_is_ready(playPauseB.port) ||
-        !device_is_ready(resetA.port) ||
-        !device_is_ready(resetB.port)) 
+    if (!device_is_ready(play_pause_a.port) ||
+        !device_is_ready(play_pause_b.port) ||
+        !device_is_ready(reset_a.port) ||
+        !device_is_ready(reset_b.port)) 
     {
         ret = 1;
     }
@@ -529,7 +533,7 @@ static void config_initial_voltages(struct Sequencer_Instance * p_inst)
 {
     for (int i = 0; i < ARRAY_SIZE(p_inst->seq.voltage); ++i)
     {
-        p_inst->seq.voltage[i] = 0 + (i * 600);
+        p_inst->seq.voltage[i] = 0 + (i * 500);
     }
 }
 
@@ -565,8 +569,8 @@ static void config_instance_deferred(
     transport_gpio_init(p_inst); 
     init_hardware_timers(p_inst, p_cfg);
     init_gate_gpios(p_inst);
+    
 
- 
 }
 
 /* Since configuration starts on caller's thread, configure fields that require
@@ -947,74 +951,61 @@ static void set_midi_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
     broadcast_event_to_listeners(p_inst, &evt);
 }
 
-/*
- * Tell UI module (here named led_driver) only which LED we need to hit high. The module itself will
- * keep track of everything else that needs to stay dimmed and high from other calls (e.g. the other sequencer). 
-*/
-// static void set_ui_on_step (struct Sequencer_Instance * p_inst, 
-//                             enum Sequencer_Id id,
-//                             uint16_t step, 
-//                             uint16_t offset, 
-//                             uint16_t val) 
-// {
-//     struct Sequencer_Evt_LED_Write_Ready evt_cfg = {
-//         .id = id,
-//         .step = step,
-//         .offset = offset,
-//         .val = val
-//     }; 
-
-//     struct Sequencer_Evt evt = {
-//         .sig = k_Seq_Evt_Sig_LED_Write_Ready,
-//         .data.led_write = evt_cfg
-//     };
-
-//     broadcast_event_to_listeners(p_inst, &evt);
-// }
 
 
-static void advance_sequencer_step (struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
+static void advance_sequencer_step(struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
 {
-
     if (p_inst->seq.maxStep[id] == 0) return;
 
     uint8_t next_step = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
 
     p_inst->seq.step[id] = next_step; 
-
 }
 
-bool play_pause_1_led_track = false;
-bool play_pause_1_transport_track = false;
-static uint64_t play_pause_1_last_time = 0;
 
-bool play_pause_2_led_track = false;
-bool play_pause_2_transport_track = false;
-static uint64_t play_pause_2_last_time = 0;
+enum Sequencer_Ctrl_Id {
+    PLAY_PAUSE_A,
+    RESET_A,
+    PLAY_PAUSE_B,
+    RESET_B,
+    MODE_BTN,
+    CTRL_BTN_LAST
+};
 
-bool reset_1_led_track = false;
-bool reset_1_transport_track = false;
-static uint64_t reset_1_last_time = 0;
+struct ButtonDefinition {
+    const struct device *port;
+    gpio_pin_t pin;
+};
 
-bool reset_2_led_track = false;
-bool reset_2_transport_track = false;
-static uint64_t reset_2_last_time = 0;
+const struct ButtonDefinition button_definition[5] = {
+    { .port = play_pause_a.port, .pin = play_pause_a.pin },
+    { .port = reset_a.port, .pin = reset_a.pin },
+    { .port = play_pause_b.port, .pin = play_pause_b.pin },
+    { .port = reset_b.port, .pin = reset_b.pin },
+    { .port = mode_btn.port, .pin = mode_btn.pin }
+};
 
 
-static void on_transportA(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+static int debounce (enum Sequencer_Ctrl_Id id) {
+    static uint8_t switch_state[CTRL_BTN_LAST] = {0}; 
+    switch_state[id] = (switch_state[id] << 1) | !gpio_pin_get(button_definition[id].port, button_definition[id].pin);
+    if (switch_state[id] == 0x00) {
+        switch_state[id] = 0xFF;
+        return 1; 
+    }
+}
+
+
+static void on_transport_a(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
     struct Sequencer_Instance *p_inst = CONTAINER_OF(cb, struct Sequencer_Instance, transport_gpio_1_cb);
 
-    static uint64_t last_time = 0;
-    uint64_t current_time = k_uptime_get();
-    if (current_time - last_time < DEBOUNCE_TIME_MS) return;
-    last_time = current_time;
+    static bool status = false;
+    bool pressed = debounce(PLAY_PAUSE_A);
 
-    bool pin_state = gpio_pin_get(playPauseA.port, playPauseA.pin);
-
-    if (pin_state) {
-        play_pause_1_led_track = !play_pause_1_led_track;
-        gpio_pin_set(play_led_high.port, play_led_high.pin, play_pause_1_led_track);
+    if (pressed){
+        status = !status;
+        gpio_pin_set(play_led_high.port, play_led_high.pin, status);
 
         if (p_inst->seq.running[0]) {
             counter_stop(p_inst->timer.t[0]);
@@ -1024,23 +1015,19 @@ static void on_transportA(const struct device *dev, struct gpio_callback *cb, ui
         p_inst->seq.running[0] = !p_inst->seq.running[0];
     }
 }
+ 
 
 
-
-static void on_transportB(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+static void on_transport_b(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
     struct Sequencer_Instance *p_inst = CONTAINER_OF(cb, struct Sequencer_Instance, transport_gpio_2_cb);
 
-    static uint64_t last_time = 0;
-    uint64_t current_time = k_uptime_get();
-    if (current_time - last_time < DEBOUNCE_TIME_MS) return;
-    last_time = current_time;
+    static bool status = false;
+    bool pressed = debounce(PLAY_PAUSE_B);
 
-    bool pin_state = gpio_pin_get(playPauseB.port, playPauseB.pin);
-
-    if (pin_state) {
-        play_pause_2_led_track = !play_pause_2_led_track;
-        gpio_pin_set(play_led_low.port, play_led_low.pin, play_pause_2_led_track);
+    if (pressed){
+        status = !status;
+        gpio_pin_set(play_led_low.port, play_led_low.pin, status);
 
         if (p_inst->seq.running[1]) {
             counter_stop(p_inst->timer.t[1]);
@@ -1051,44 +1038,50 @@ static void on_transportB(const struct device *dev, struct gpio_callback *cb, ui
     }
 }
 
-static void on_resetA(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+static void on_reset_a(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
     struct Sequencer_Instance * p_inst = CONTAINER_OF(cb, struct Sequencer_Instance, transport_gpio_1_rst_cb);
+    bool pressed = debounce(RESET_A);
 
-    /* Debounce */
-    uint64_t current_time = k_uptime_get();
-    if (current_time - reset_1_last_time < 50) return;
-    reset_1_last_time = current_time;
+    if (pressed){
+        gpio_pin_set(reset_led_high.port, reset_led_high.pin, 1);
+        p_inst->seq.step[0] = 0;
+        p_inst->seq.edge[0] = false;
+    }
 
-    bool pin_state = gpio_pin_get(resetA.port, resetA.pin);
+    struct Sequencer_Evt evt = {
+        .sig = k_Seq_Evt_Sig_Reset_LED,
+        .data.reset.channel = 0,
+        .data.reset.offset = p_inst->seq.offset,
+        .data.reset.step = p_inst->seq.step[0],
+        .data.reset.val = EIGHTH_BRIGHTNESS
+    };
 
-    if (pin_state) {
-        /* Reset sequencer step to 0 */
-        p_inst->seq.step[p_inst->id] = 0;
-    } 
+    broadcast_event_to_listeners(p_inst, &evt);
 
-    gpio_pin_set(reset_led_high.port, reset_led_high.pin, pin_state);
-
+    bool btn_state = gpio_pin_get(reset_a.port, reset_a.pin);
+    gpio_pin_set(reset_led_high.port, reset_led_high.pin, btn_state);
 }
 
-static void on_resetB(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+
+static void on_reset_b(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
     struct Sequencer_Instance * p_inst = CONTAINER_OF(cb, struct Sequencer_Instance, transport_gpio_2_rst_cb);
+    bool pressed = debounce(RESET_B);
 
-    /* Debounce */
-    uint64_t current_time = k_uptime_get();
-    if (current_time - reset_2_last_time < 50) return;
-    reset_2_last_time = current_time;
+    if (pressed){
+        gpio_pin_set(reset_led_low.port, reset_led_low.pin, 1);
+        p_inst->seq.step[1] = 0;
+        p_inst->seq.edge[1] = false;
+    }
 
-    bool pin_state = gpio_pin_get(resetB.port, resetB.pin);
 
-    if (pin_state) {
-        /* Reset sequencer step to 0 */
-        p_inst->seq.step[p_inst->id] = 0;
-    } 
-
-    gpio_pin_set(reset_led_low.port, reset_led_low.pin, pin_state);
+    bool btn_state = gpio_pin_get(reset_b.port, reset_b.pin);
+    gpio_pin_set(reset_led_low.port, reset_led_low.pin, btn_state);
 }
+
+
+
 
 /* **********
  * FSM States
@@ -1110,14 +1103,12 @@ static void on_resetB(const struct device *dev, struct gpio_callback *cb, uint32
  *
  *  |entry             |  |run             |  |exit           |
  *  |------------------|  |----------------|  |---------------|
- *  |* start conversion|  |convert:        |  |not implemented|
+ *  |* start conversion|  |run sequencer:  |  |not implemented|
  *  |  timer           |  |* timer elapsed |
- *                        |* pot changed   |
- *                        |* btn changed   |
- *                        |deinit:         |
- *                        |* ->deinit      |
- *                        |all others:     |
- *                        |* assert        |
+ *                        |* set voltage   |
+ *                        |* set gate      |
+ *                        |* adv step      |
+ *                        |* set LED       |
  *
  *  State deinit:
  *
@@ -1202,58 +1193,47 @@ static void state_run_run(void * o)
         case k_Seq_SM_Evt_Timer_Elapsed:
 
             struct Sequencer_SM_Evt_Sig_Timer_Elapsed * p_stepped = &p_evt->data.stepped; 
-            uint8_t ledval;
-            uint16_t new_tix; 
+            uint32_t new_tix; // changed from uint16
             enum Sequencer_Id id = p_stepped->id;
+
             switch(p_stepped->edge) {
 
-                case FALLING_EDGE:
+                case LOW_EDGE:
 
-                    update_leds(id, p_inst->seq.step[id], p_inst->seq.offset, EIGHTH_BRIGHTNESS);
-                    set_voltage_on_step(p_inst, id);
-                    set_gate_on_step(p_inst, id, true);
+                    uint8_t currentStep = p_inst->seq.step[id];
+                    bool isActive = p_inst->seq.active[currentStep + id * p_inst->seq.offset];
+
+                    update_leds(id, currentStep, p_inst->seq.offset, EIGHTH_BRIGHTNESS, LED_STEP, NULL);
                     
-                    p_inst->seq.edge[id] = RISING_EDGE;
+                    if (isActive) {
+                        set_voltage_on_step(p_inst, id);
+                        set_gate_on_step(p_inst, id, true);
+                    }
+
+                    p_inst->seq.edge[id] = HIGH_EDGE;
                     
-                    new_tix = calculate_gate_timer_delay(p_inst, id, RISING_EDGE);
+                    new_tix = calculate_gate_timer_delay(p_inst, id, HIGH_EDGE);
                     
                     if (new_tix < 1) new_tix = 1;
                     
                     reset_timer(p_inst, id, new_tix);
+                    
                 break;
 
-                case RISING_EDGE:
+                case HIGH_EDGE:
 
                     advance_sequencer_step(p_inst, id);
                     set_gate_on_step(p_inst, id, false);
                     
-                    p_inst->seq.edge[id] = FALLING_EDGE;
+                    p_inst->seq.edge[id] = LOW_EDGE;
                     
-                    new_tix = calculate_gate_timer_delay(p_inst, id, FALLING_EDGE);
+                    new_tix = calculate_gate_timer_delay(p_inst, id, LOW_EDGE);
                     
                     if (new_tix < 1) new_tix = 1;
                     
                     reset_timer(p_inst, id, new_tix);
                 break; 
             }
-
-                        // if(p_stepped->edge == FALLING_EDGE) {
-                        //     update_leds(id, p_inst->seq.step[id], p_inst->seq.offset, EIGHTH_BRIGHTNESS);
-                        //     set_voltage_on_step(p_inst, id);
-                        //     set_gate_on_step(p_inst, id, true);
-                        //     p_inst->seq.edge[id] = RISING_EDGE;
-                        //     new_tix = calculate_gate_timer_delay(p_inst, id, RISING_EDGE);
-                        //     if (new_tix < 1) new_tix = 1;
-                        //     reset_timer(p_inst, id, new_tix);
-                        // } else {
-                        //     advance_sequencer_step(p_inst, id);
-                        //     set_gate_on_step(p_inst, id, false);
-                        //     p_inst->seq.edge[id] = FALLING_EDGE;
-                        //     new_tix = calculate_gate_timer_delay(p_inst, id, FALLING_EDGE);
-                        //     if (new_tix < 1) new_tix = 1;
-                        //     reset_timer(p_inst, id, new_tix);
-                        // }
-
             break;
 
         case k_Seq_SM_Evt_Sig_Pot_Value_Changed:
@@ -1264,12 +1244,10 @@ static void state_run_run(void * o)
 
             break;
         case k_Seq_SM_Evt_Sig_Button_Pressed:
-            struct Sequencer_SM_Evt_Sig_Button_Pressed * p_button = &p_evt->data.btn_pressed; 
-            #if 0 /* Pseudo code: */
-            Buttons in normal state tell us which steps are active. In this case, just update sequencer instance information with which steps are active. 
-            Later we will deal with the mode button which, when held, will put us in another state to edit the length of our sequences. 
-            #endif
-            break; 
+
+
+            break;
+
         #if CONFIG_FKMG_SEQ_SHUTDOWN_ENABLED
         case k_Seq_Evt_Sig_Instance_Deinitialized:
             assert(false);
@@ -1384,45 +1362,6 @@ static void start_thread(
  * Public
  */
 
-
-
-
-void save_channel_state(uint16_t state) {
-    struct nvs_fs fs;
-    int ret;
-
-    // /* Initialize NVS */
-    // ret = nvs_init(&fs, DT_LABEL(DT_ALIAS(nvs_flash)));
-    // if (ret) {
-    //     LOG_ERR("Error: NVS Init");
-    // }
-
-    // /* Write state to NVS */
-    // ret = nvs_write(&fs, CHANNEL_STATE_ID, &state, sizeof(state));
-    // if (ret < 0) {
-    //     LOG_ERR("Error: NVS Write");
-    // }
-}
-
-uint16_t load_channel_state(void) {
-    struct nvs_fs fs;
-    uint16_t state = 0;
-    int ret;
-
-    // /* Initialize NVS */
-    // ret = nvs_init(&fs, DT_LABEL(DT_ALIAS(nvs_flash)));
-    // if (ret) {
-    //     LOG_ERR("Error: NVS Init");
-    // }
-
-    // /* Read state from NVS */
-    // ret = nvs_read(&fs, CHANNEL_STATE_ID, &state, sizeof(state));
-    // if (ret < 0) {
-    //     LOG_ERR("Error: NVS Read");
-    // }
-
-    return state;
-}
 
 
 void Sequencer_Init_Instance(struct Sequencer_Instance_Cfg * p_cfg)

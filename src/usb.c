@@ -1,36 +1,30 @@
 /* *****************************************************************************
- * @brief UART implementation.
+ * @brief USB implementation.
  */
 
 /* *****************************************************************************
  * TODO
- * Further testing after changes. I now store midi note data in this object and
- * update them only on voltage pot changes. That way we don't recaculate midi notes
- * on each firing. This has resolved previous crash issues. 
- * 
- * On each timer interrupt in sequencer layer, we send a note on or off to this
- * object.
+ This module will handle MIDI messages to and from the USB port. 
+
+ NOTE: The STM32F446RE has an internal pull-up resistor on the USB D+ line, therefore no external pull-up resistor is needed.
  */
 
 /* *****************************************************************************
  * Includes
  */
 
-#include "uart.h"
+#include "usb.h"
 
 #include <zephyr/smf.h>
 #include <zephyr/kernel.h>
 
-#include <zephyr/drivers/uart.h>
-#include <zephyr/drivers/dma.h>
-#include <zephyr/drivers/dma/dma_stm32.h>
-
 #include <assert.h>
 
-#include <stdlib.h>
+#include "usb/private/sm_evt.h"
+#include "usb/private/module_data.h"
 
-#include "uart/private/sm_evt.h"
-#include "uart/private/module_data.h"
+#include <zephyr/usb/usb_device.h>
+#include <zephyr/usb/usbd.h>
 
 /* *****************************************************************************
  * Constants, Defines, and Macros
@@ -39,41 +33,30 @@
 #define SUCCESS (0)
 #define FAIL    (-1)
 
-#define OVERRIDE    true
-#define NO_OVERRIDE false
+#define OVERRIDE            true
+#define NO_OVERRIDE         false
 
-#define UART_NODE   DT_NODELABEL(usart1)
-
-
-/* *****************************************************************************
- * MIDI Specific Defines
- */ 
-
-#define DAC_VOLTAGE_RANGE   5.0 // in volts
 
 /* *****************************************************************************
  * Debugging
  */
 
-#if CONFIG_FKMG_UART_NO_OPTIMIZATIONS
+#if CONFIG_FKMG_USB_NO_OPTIMIZATIONS
 #pragma GCC push_options
 #pragma GCC optimize ("Og")
-#warning "uart.c unoptimized!"
+#warning "usb.c unoptimized!"
 #endif
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(uart);
+LOG_MODULE_REGISTER(usb);
 
 /* *****************************************************************************
  * Structs
  */
 
-static struct uart_module_data uart_md = {0};
+static struct usb_module_data usb_md = {0};
 /* Convenience accessor to keep name short: md - module data. */
-#define md uart_md
-
-const struct device * uart_dev = DEVICE_DT_GET(UART_NODE); 
-
+#define md usb_md
 
 
 
@@ -86,17 +69,17 @@ const struct device * uart_dev = DEVICE_DT_GET(UART_NODE);
  * *****/
 
 static bool instance_contains_state_machine_ctx(
-        struct UART_Instance * p_inst,
+        struct USB_Instance * p_inst,
         struct smf_ctx      * p_sm_ctx)
 {
     return(&p_inst->sm == p_sm_ctx);
 }
 
 /* Find the instance that contains the state machine context. */
-static struct UART_Instance * sm_ctx_to_instance(struct smf_ctx * p_sm_ctx)
+static struct USB_Instance * sm_ctx_to_instance(struct smf_ctx * p_sm_ctx)
 {
     /* Iterate thru the instances. */
-    struct UART_Instance * p_inst = NULL;
+    struct USB_Instance * p_inst = NULL;
     SYS_SLIST_FOR_EACH_CONTAINER(&md.list.instances, p_inst, node.instance){
         if(instance_contains_state_machine_ctx(p_inst, p_sm_ctx)) return p_inst;
     }
@@ -104,39 +87,38 @@ static struct UART_Instance * sm_ctx_to_instance(struct smf_ctx * p_sm_ctx)
 }
 
 
-
 /* **************
  * Listener Utils
  * **************/
 
-#if CONFIG_FKMG_UART_RUNTIME_ERROR_CHECKING
-static enum UART_Err_Id check_listener_cfg_param_for_errors(
-        struct UART_Listener_Cfg * p_cfg )
+#if CONFIG_FKMG_USB_RUNTIME_ERROR_CHECKING
+static enum USB_Err_Id check_listener_cfg_param_for_errors(
+        struct USB_Listener_Cfg * p_cfg )
 {
     if(!p_cfg
     || !p_cfg->p_iface
-    || !p_cfg->p_lsnr) return(k_UART_Err_Id_Configuration_Invalid);
+    || !p_cfg->p_lsnr) return(k_USB_Err_Id_Configuration_Invalid);
 
     /* Is signal valid? */
-    if(p_cfg->sig > k_UART_Sig_Max)
-        return(k_UART_Err_Id_Configuration_Invalid);
+    if(p_cfg->sig > k_USB_Sig_Max)
+        return(k_USB_Err_Id_Configuration_Invalid);
 
     /* Is callback valid? */
     if(!p_cfg->cb)
-        return(k_UART_Err_Id_Configuration_Invalid);
+        return(k_USB_Err_Id_Configuration_Invalid);
 
-    return(k_UART_Err_Id_None);
+    return(k_USB_Err_Id_None);
 }
 #endif
 
-static void clear_listener(struct UART_Listener * p_lsnr)
+static void clear_listener(struct USB_Listener * p_lsnr)
 {
     memset(p_lsnr, 0, sizeof(*p_lsnr));
 }
 
 static void config_listener(
-        struct UART_Listener     * p_lsnr,
-        struct UART_Listener_Cfg * p_cfg)
+        struct USB_Listener     * p_lsnr,
+        struct USB_Listener_Cfg * p_cfg)
 {
     /* Set listner's instance it is listening to. */
     p_lsnr->p_inst = p_cfg->p_inst;
@@ -145,7 +127,7 @@ static void config_listener(
     p_lsnr->cb = p_cfg->cb;
 }
 
-static void init_listener(struct UART_Listener * p_lsnr)
+static void init_listener(struct USB_Listener * p_lsnr)
 {
     clear_listener(p_lsnr);
 }
@@ -154,50 +136,42 @@ static void init_listener(struct UART_Listener * p_lsnr)
  * Instance Utils
  * **************/
 
-#if CONFIG_FKMG_UART_RUNTIME_ERROR_CHECKING
-static enum UART_Err_Id check_instance_cfg_param_for_errors(
-        struct UART_Instance_Cfg * p_cfg)
+#if CONFIG_FKMG_USB_RUNTIME_ERROR_CHECKING
+static enum USB_Err_Id check_instance_cfg_param_for_errors(
+        struct USB_Instance_Cfg * p_cfg)
 {
     if(!p_cfg
     || !p_cfg->p_inst
     || !p_cfg->task.sm.p_thread
     || !p_cfg->task.sm.p_stack
-    || !p_cfg->msgq.p_sm_evts) return(k_UART_Err_Id_Configuration_Invalid);
+    || !p_cfg->msgq.p_sm_evts) return(k_USB_Err_Id_Configuration_Invalid);
 
-    if(p_cfg->task.sm.stack_sz == 0) return(k_UART_Err_Id_Configuration_Invalid);
+    if(p_cfg->task.sm.stack_sz == 0) return(k_USB_Err_Id_Configuration_Invalid);
 
-    return(k_UART_Err_Id_None);
+    return(k_USB_Err_Id_None);
 }
 #endif
 
 static void add_instance_to_instances(
-        struct UART_Instance  * p_inst)
+        struct USB_Instance  * p_inst)
 {
     sys_slist_append(&md.list.instances, &p_inst->node.instance);
 }
 
 static void config_instance_queues(
-        struct UART_Instance     * p_inst,
-        struct UART_Instance_Cfg * p_cfg)
+        struct USB_Instance     * p_inst,
+        struct USB_Instance_Cfg * p_cfg)
 {
     p_inst->msgq.p_sm_evts = p_cfg->msgq.p_sm_evts;
 }
 
 
-/* Forward Declaration*/
-static void init_uart_device(struct UART_Instance * p_inst); 
 
 
 static void config_instance_deferred(
-        struct UART_Instance     * p_inst,
-        struct UART_Instance_Cfg * p_cfg)
+        struct USB_Instance     * p_inst,
+        struct USB_Instance_Cfg * p_cfg)
 {
-
-    for (int i = 0; i < 16; i++) {
-        p_inst->midi.note[i] = 0 + (i * 5); 
-    }
-
-    init_uart_device(p_inst);
 
 }
 
@@ -205,50 +179,34 @@ static void config_instance_deferred(
  * immediate and/or inconsequential configuration and defer rest to be handled
  * by our own thread later. */
 static void config_instance_immediate(
-        struct UART_Instance     * p_inst,
-        struct UART_Instance_Cfg * p_cfg)
+        struct USB_Instance     * p_inst,
+        struct USB_Instance_Cfg * p_cfg)
 {
     config_instance_queues(p_inst, p_cfg);
 }
 
-static void init_instance_lists(struct UART_Instance * p_inst)
+static void init_instance_lists(struct USB_Instance * p_inst)
 {
-    for(enum UART_Evt_Sig sig = k_UART_Evt_Sig_Beg;
-                         sig < k_UART_Evt_Sig_End;
+    for(enum USB_Evt_Sig sig = k_USB_Evt_Sig_Beg;
+                         sig < k_USB_Evt_Sig_End;
                          sig++){
         sys_slist_init(&p_inst->list.listeners[sig]);
     }
 }
 
-static void clear_instance(struct UART_Instance * p_inst)
+static void clear_instance(struct USB_Instance * p_inst)
 {
     memset(p_inst, 0, sizeof(*p_inst));
 }
 
-static void init_instance(struct UART_Instance * p_inst)
+static void init_instance(struct USB_Instance * p_inst)
 {
     clear_instance(p_inst);
     init_instance_lists(p_inst);
-    #if CONFIG_FKMG_UART_RUNTIME_ERROR_CHECKING
-    p_inst->err = k_UART_Err_Id_None;
+    #if CONFIG_FKMG_USB_RUNTIME_ERROR_CHECKING
+    p_inst->err = k_USB_Err_Id_None;
     #endif
 }
-
-
-
-
-static void init_uart_device(struct UART_Instance * p_inst) 
-{
-    
-    int err; 
-
-    err = device_is_ready(uart_dev);
-    assert(err == 1);
-
-
-}
-
-
 
 /* ************
  * Module Utils
@@ -276,66 +234,64 @@ static void init_module(void)
  * Error Checking
  * **************/
 
-#if CONFIG_FKMG_UART_RUNTIME_ERROR_CHECKING
+#if CONFIG_FKMG_USB_RUNTIME_ERROR_CHECKING
 static void set_error(
-        struct UART_Instance * p_inst,
-        enum UART_Err_Id       err,
+        struct USB_Instance * p_inst,
+        enum USB_Err_Id       err,
         bool                  override)
 {
     if(p_inst){
         if((override                          )
-        || (p_inst->err == k_UART_Err_Id_None )){
+        || (p_inst->err == k_USB_Err_Id_None )){
             p_inst->err = err;
         }
     }
 }
 
 static bool errored(
-        struct UART_Instance * p_inst,
-        enum UART_Err_Id       err )
+        struct USB_Instance * p_inst,
+        enum USB_Err_Id       err )
 {
     set_error(p_inst, err, NO_OVERRIDE);
-    return(err != k_UART_Err_Id_None);
+    return(err != k_USB_Err_Id_None);
 }
-#endif /* CONFIG_FKMG_UART_RUNTIME_ERR OR_CHECKING */
+#endif /* CONFIG_FKMG_USB_RUNTIME_ERROR_CHECKING */
 
 /* ************
  * Broadcasting
  * ************/
 
 static void broadcast(
-        struct UART_Evt      * p_evt,
-        struct UART_Listener * p_lsnr)
+        struct USB_Evt      * p_evt,
+        struct USB_Listener * p_lsnr)
 {
     /* call the listener, passing the event */
-    if(p_lsnr->cb)  p_lsnr->cb(p_evt);
+    if(p_lsnr->cb) p_lsnr->cb(p_evt);
 }
 
 static void broadcast_event_to_listeners(
-        struct UART_Instance * p_inst,
-        struct UART_Evt      * p_evt)
+        struct USB_Instance * p_inst,
+        struct USB_Evt      * p_evt)
 {
-
-    enum UART_Evt_Sig sig = p_evt->sig;
-    struct UART_Listener * p_lsnr = NULL;
+    enum USB_Evt_Sig sig = p_evt->sig;
+    struct USB_Listener * p_lsnr = NULL;
     SYS_SLIST_FOR_EACH_CONTAINER(&p_inst->list.listeners[sig], p_lsnr, node.listener){
-         broadcast(p_evt, p_lsnr);
+        broadcast(p_evt, p_lsnr);
     }
-
 }
 
 /* There's only 1 listener for instance initialization, and it is provided in
  * the cfg struct. */
 static void broadcast_instance_initialized(
-        struct UART_Instance * p_inst,
-        UART_Listener_Cb       cb)
+        struct USB_Instance * p_inst,
+        USB_Listener_Cb       cb)
 {
-    struct UART_Evt evt = {
-            .sig = k_UART_Evt_Sig_Instance_Initialized,
+    struct USB_Evt evt = {
+            .sig = k_USB_Evt_Sig_Instance_Initialized,
             .data.initd.p_inst = p_inst
     };
 
-    struct UART_Listener lsnr = {
+    struct USB_Listener lsnr = {
         .p_inst = p_inst,
         .cb = cb
     };
@@ -343,17 +299,17 @@ static void broadcast_instance_initialized(
     broadcast(&evt, &lsnr);
 }
 
-#if CONFIG_FKMG_UART_ALLOW_SHUTDOWN
+#if CONFIG_FKMG_USB_ALLOW_SHUTDOWN
 static void broadcast_interface_deinitialized(
-        struct UART_Instance * p_inst,
-        UART_Listener_Cb       cb)
+        struct USB_Instance * p_inst,
+        USB_Listener_Cb       cb)
 {
-    struct UART_Evt evt = {
-            .sig = k_UART_Instance_Deinitialized,
+    struct USB_Evt evt = {
+            .sig = k_USB_Instance_Deinitialized,
             .data.inst_deinit.p_inst = p_inst
     };
 
-    struct UART_Listener lsnr = {
+    struct USB_Listener lsnr = {
         .p_inst = p_inst,
         .cb = cb
     };
@@ -363,36 +319,21 @@ static void broadcast_interface_deinitialized(
 #endif
 
 
-static void broadcast_uart_ready(
-        struct UART_Instance    *   p_inst,
-        uint8_t                     bytes[3])
-{
-
-    struct UART_Evt evt = {
-            .sig = k_UART_Evt_Sig_RX_Ready,
-    };
-
-    memcpy(evt.data.midi_command.bytes, bytes, 3);
-
-    broadcast_event_to_listeners(p_inst, &evt);
-
-}
-
 /* **************
  * Listener Utils
  * **************/
 
 static void add_listener_for_signal_to_listener_list(
-    struct UART_Listener_Cfg * p_cfg)
+    struct USB_Listener_Cfg * p_cfg)
 {
     /* Get pointer to interface to add listener to. */
-    struct UART_Instance * p_inst = p_cfg->p_inst;
+    struct USB_Instance * p_inst = p_cfg->p_inst;
 
     /* Get pointer to configured listener. */
-    struct UART_Listener * p_lsnr = p_cfg->p_lsnr;
+    struct USB_Listener * p_lsnr = p_cfg->p_lsnr;
 
     /* Get signal to listen for. */
-    enum UART_Evt_Sig sig = p_cfg->sig;
+    enum USB_Evt_Sig sig = p_cfg->sig;
 
     /* Add listener to instance's specified signal. */
     sys_slist_t * p_list = &p_inst->list.listeners[sig];
@@ -400,13 +341,13 @@ static void add_listener_for_signal_to_listener_list(
     sys_slist_append(p_list, p_node);
 }
 
-#if CONFIG_FKMG_UART_ALLOW_LISTENER_REMOVAL
+#if CONFIG_FKMG_USB_ALLOW_LISTENER_REMOVAL
 static bool find_list_containing_listener_and_remove_listener(
-    struct UART_Instance * p_inst,
-	struct UART_Listener * p_lsnr)
+    struct USB_Instance * p_inst,
+	struct USB_Listener * p_lsnr)
 {
-    for(enum UART_Evt_Sig sig = k_UART_Evt_Sig_Beg;
-                         sig < k_UART_Evt_Sig_End;
+    for(enum USB_Sig sig = k_USB_Evt_Sig_Beg;
+                         sig < k_USB_Evt_Sig_End;
                          sig++){
         bool found_and_removed = sys_slist_find_and_remove(
                 &p_inst->list.listeners[sig], &p_lsnr->node);
@@ -416,31 +357,50 @@ static bool find_list_containing_listener_and_remove_listener(
 }
 #endif
 
-
+static bool signal_has_listeners(
+        struct USB_Instance * p_inst,
+        enum USB_Evt_Sig      sig)
+{
+    return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
+}
 
 /* **************
  * Event Queueing
  * **************/
 
-static void q_sm_event(struct UART_Instance * p_inst, struct UART_SM_Evt * p_evt)
+static void q_sm_event(struct USB_Instance * p_inst, struct USB_SM_Evt * p_evt)
 {
     bool queued = k_msgq_put(p_inst->msgq.p_sm_evts, p_evt, K_NO_WAIT) == 0;
 
     if(!queued) assert(false);
 }
 
-static void q_init_instance_event(struct UART_Instance_Cfg * p_cfg)
+static void q_init_instance_event(struct USB_Instance_Cfg * p_cfg)
 {
-    struct UART_SM_Evt evt = {
-            .sig = k_UART_SM_Evt_Sig_Init_Instance,
+    struct USB_SM_Evt evt = {
+            .sig = k_USB_SM_Evt_Sig_Init_Instance,
             .data.init_inst.cfg = *p_cfg
     };
-    struct UART_Instance * p_inst = p_cfg->p_inst;
-
+    struct USB_Instance * p_inst = p_cfg->p_inst;
     q_sm_event(p_inst, &evt);
 }
 
 
+/* **************
+ * USB INITS
+ * **************/
+
+static void init_usb_device(struct USB_Instance * p_inst)
+{
+    int ret = usb_enable(NULL);
+    if(ret != 0) {
+        LOG_ERR("Failed to enable USB device (err: %d)", ret);
+        return; 
+    } else {
+        LOG_INF("USB device enabled");
+    
+    }
+}
 
 
 
@@ -465,16 +425,9 @@ static void q_init_instance_event(struct UART_Instance_Cfg * p_cfg)
  *
  *  |entry             |  |run             |  |exit           |
  *  |------------------|  |----------------|  |---------------|
- *  |* start conversion|  |convert:        |  |not implemented|
- *  |  timer           |  |* adc conversion|
- *                        |* advance mux   |
- *                        |* filter adc val|
- *                        |* broadcast if  |
- *                        | changed        |
- *                        |deinit:         |
- *                        |* ->deinit      |
- *                        |all others:     |
- *                        |* assert        |
+ *  |not implemented   |  |convert:        |  |not implemented|
+ *  |                  |  |                |
+
  *
  *  State deinit:
  *
@@ -499,10 +452,12 @@ static const struct smf_state states[];
 
 enum state{
     init,   // Init instance - should only occur once, after thread start
-    run,    // Run - handles all events while running (e.g. conversion, etc.)
+    run,    // Run - handles all events while running
     deinit, // Deinit instance - should only occur once, after deinit event
             // (if implemented)
 };
+
+
 
 /* NOTE: in all the state functions the param o is a pointer to the state
  * machine context, which is &p_inst->sm. */
@@ -515,23 +470,25 @@ enum state{
 static void state_init_run(void * o)
 {
     struct smf_ctx * p_sm = o;
-    struct UART_Instance * p_inst = sm_ctx_to_instance(p_sm);
+    struct USB_Instance * p_inst = sm_ctx_to_instance(p_sm);
 
     /* Get the event. */
-    struct UART_SM_Evt * p_evt = &p_inst->sm_evt;
+    struct USB_SM_Evt * p_evt = &p_inst->sm_evt;
 
     /* Expecting only an "init instance" event. Anything else is an error. */
-    assert(p_evt->sig == k_UART_SM_Evt_Sig_Init_Instance);
+    assert(p_evt->sig == k_USB_SM_Evt_Sig_Init_Instance);
 
     /* We init'd required params on the caller's thread (i.e.
-     * UART_Init_Instance()), now finish the job. Since this is an
+     * USB_Init_Instance()), now finish the job. Since this is an
      * Init_Instance event the data contains the intance cfg. */
-    struct UART_SM_Evt_Sig_Init_Instance * p_ii = &p_evt->data.init_inst;
-
-    config_instance_deferred(p_inst, &p_ii->cfg);
+    struct USB_SM_Evt_Sig_Init_Instance * p_ii = &p_evt->data.init_inst;
+    
+    
     broadcast_instance_initialized(p_inst, p_ii->cfg.cb);
-
     smf_set_state(SMF_CTX(p_sm), &states[run]);
+
+    init_usb_device(p_inst); 
+
 }
 
 /* Run state responsibility is to be the root state to handle everything else
@@ -540,32 +497,29 @@ static void state_init_run(void * o)
 static void state_run_entry(void * o)
 {
     struct smf_ctx * p_sm = o;
-    struct UART_Instance * p_inst = sm_ctx_to_instance(p_sm);
+    struct USB_Instance * p_inst = sm_ctx_to_instance(p_sm);
+
 }
 
 static void state_run_run(void * o)
 {
     struct smf_ctx * p_sm = o;
-    struct UART_Instance * p_inst = sm_ctx_to_instance(p_sm);
+    struct USB_Instance * p_inst = sm_ctx_to_instance(p_sm);
 
     /* Get the event. */
-    struct UART_SM_Evt * p_evt = &p_inst->sm_evt;
-
+    struct USB_SM_Evt * p_evt = &p_inst->sm_evt;
 
     switch(p_evt->sig){
         default: break;
-        case k_UART_SM_Evt_Sig_Init_Instance:
+
+        case k_USB_SM_Evt_Sig_Init_Instance:
             /* Should never occur. */
             assert(false);
             break;
-        case k_UART_SM_Evt_Sig_Write_MIDI:
-            
-            break;
-        case k_UART_SM_Evt_Sig_Changed:
 
-            break;
-        #if CONFIG_FKMG_UART_SHUTDOWN_ENABLED
-        case k_UART_Evt_Sig_Instance_Deinitialized:
+
+        #if CONFIG_FKMG_USB_SHUTDOWN_ENABLED
+        case k_USB_Evt_Sig_Instance_Deinitialized:
             assert(false);
             break;
         #endif
@@ -573,14 +527,14 @@ static void state_run_run(void * o)
 }
 
 /* Deinit state responsibility is to clean up before exiting thread. */
-#if CONFIG_FKMG_UART_SHUTDOWN_ENABLED
+#if CONFIG_FKMG_USB_SHUTDOWN_ENABLED
 static void state_deinit_run(void * o)
 {
     struct smf_ctx * p_sm = o;
-    struct UART_Instance * p_inst = sm_ctx_to_instance(p_sm);
+    struct USB_Instance * p_inst = sm_ctx_to_instance(p_sm);
 
     /* Get the event. */
-    struct UART_SM_Evt * p_evt = &p_inst->sm_evt;
+    struct USB_SM_Evt * p_evt = &p_inst->sm_evt;
 
     /* TODO */
 }
@@ -590,7 +544,7 @@ static const struct smf_state states[] = {
     /*                                      entry               run  exit */
     [  init] = SMF_CREATE_STATE(           NULL,   state_init_run, NULL),
     [   run] = SMF_CREATE_STATE(state_run_entry,    state_run_run, NULL),
-    #if CONFIG_FKMG_UART_SHUTDOWN_ENABLED
+    #if CONFIG_FKMG_USB_SHUTDOWN_ENABLED
     [deinit] = SMF_CREATE_STATE(           NULL, state_deinit_run, NULL),
     #endif
 };
@@ -599,7 +553,7 @@ static const struct smf_state states[] = {
  * Thread
  * ******/
 
-#if CONFIG_FKMG_UART_ALLOW_SHUTDOWN
+#if CONFIG_FKMG_USB_ALLOW_SHUTDOWN
 /* Since there is only the "join" facility to know when a thread is shut down,
  * and that isn't appropriate to use since it will put the calling thread to
  * sleep until the other thread is shut down, we set up a delayable system work
@@ -607,8 +561,8 @@ static const struct smf_state states[] = {
  * that is waiting to be notified. */
 void on_thread_shutdown(struct k_work *item)
 {
-    struct UART_Instance * p_inst =
-            CONTAINER_OF(item, struct UART_Instance, work);
+    struct USB_Instance * p_inst =
+            CONTAINER_OF(item, struct USB_Instance, work);
 
     char * thread_state_str = "dead";
     k_thread_state_str(&p_inst->thread, thread_state_str, sizeof(thread_state_str));
@@ -619,10 +573,10 @@ void on_thread_shutdown(struct k_work *item)
 }
 #endif
 
-static void thread(void * p_1, /* struct UART_Instance* */
+static void thread(void * p_1, /* struct USB_Instance* */
         void * p_2_unused, void * p_3_unused)
 {
-    struct UART_Instance * p_inst = p_1;
+    struct USB_Instance * p_inst = p_1;
     /* NOTE: smf_set_initial() executes the entry state. */
     struct smf_ctx * p_sm = &p_inst->sm;
     smf_set_initial(SMF_CTX(p_sm), &states[init]);
@@ -630,7 +584,7 @@ static void thread(void * p_1, /* struct UART_Instance* */
     /* Get the state machine event queue and point to where to put the dequeued
      * event. */
     struct k_msgq * p_msgq = p_inst->msgq.p_sm_evts;
-    struct UART_SM_Evt * p_evt = &p_inst->sm_evt;
+    struct USB_SM_Evt * p_evt = &p_inst->sm_evt;
 
     bool run = true;
 
@@ -640,7 +594,7 @@ static void thread(void * p_1, /* struct UART_Instance* */
         run = smf_run_state(SMF_CTX(p_sm)) == 0;
     }
 
-    #if CONFIG_FKMG_UART_ALLOW_SHUTDOWN
+    #if CONFIG_FKMG_USB_ALLOW_SHUTDOWN
     /* We're shutting down. Schedule a work queue event to check that the
      * thread exited and call back anything. */
     if(should_callback_on_exit(p_inst)){
@@ -651,8 +605,8 @@ static void thread(void * p_1, /* struct UART_Instance* */
 }
 
 static void start_thread(
-        struct UART_Instance     * p_inst,
-        struct UART_Instance_Cfg * p_cfg)
+        struct USB_Instance     * p_inst,
+        struct USB_Instance_Cfg * p_cfg)
 {
     struct k_thread  * p_thread = p_cfg->task.sm.p_thread;
     k_thread_stack_t * p_stack  = p_cfg->task.sm.p_stack;
@@ -678,12 +632,12 @@ static void start_thread(
  * Public
  */
 
-void UART_Init_Instance(struct UART_Instance_Cfg * p_cfg)
+void USB_Init_Instance(struct USB_Instance_Cfg * p_cfg)
 {
     /* Get pointer to instance to configure. */
-    struct UART_Instance * p_inst = p_cfg->p_inst;
+    struct USB_Instance * p_inst = p_cfg->p_inst;
 
-    #if CONFIG_FKMG_UART_RUNTIME_ERROR_CHECKING
+    #if CONFIG_FKMG_USB_RUNTIME_ERROR_CHECKING
     /* Check instance configuration for errors. */
     if(errored(p_inst, check_instance_cfg_param_for_errors(p_cfg))){
         assert(false);
@@ -699,18 +653,18 @@ void UART_Init_Instance(struct UART_Instance_Cfg * p_cfg)
     q_init_instance_event(p_cfg);
 }
 
-#if CONFIG_FKMG_UART_ALLOW_SHUTDOWN
-void UART_Deinit_Instance(struct UART_Instance_Dcfg * p_dcfg)
+#if CONFIG_FKMG_USB_ALLOW_SHUTDOWN
+void USB_Deinit_Instance(struct USB_Instance_Dcfg * p_dcfg)
 {
     #error "Not implemented yet!"
 }
 #endif
 
-void UART_Add_Listener(struct UART_Listener_Cfg * p_cfg)
+void USB_Add_Listener(struct USB_Listener_Cfg * p_cfg)
 {
-    #if CONFIG_FKMG_UART_RUNTIME_ERROR_CHECKING
+    #if CONFIG_FKMG_USB_RUNTIME_ERROR_CHECKING
     /* Get pointer to instance. */
-    struct UART_Instance * p_inst = p_cfg->p_inst;
+    struct USB_Instance * p_inst = p_cfg->p_inst;
 
     /* Check listener instance configuration for errors. */
     if(errored(p_inst, check_listener_cfg_param_for_errors(p_cfg))){
@@ -719,22 +673,20 @@ void UART_Add_Listener(struct UART_Listener_Cfg * p_cfg)
     }
     #endif
 
-    struct UART_Instance * p_inst = p_cfg->p_inst;
-
-    struct UART_Listener * p_lsnr = p_cfg->p_lsnr;
+    struct USB_Listener * p_lsnr = p_cfg->p_lsnr;
     init_listener(p_lsnr);
     config_listener(p_lsnr, p_cfg);
     add_listener_for_signal_to_listener_list(p_cfg);
-
 }
 
-#if CONFIG_FKMG_UART_ALLOW_LISTENER_REMOVAL
-void UART_Remove_Listener(struct UART_Listener * p_lsnr)
+
+#if CONFIG_FKMG_USB_ALLOW_LISTENER_REMOVAL
+void USB_Remove_Listener(struct USB_Listener * p_lsnr)
 {
     #error "Not implemented yet!"
 }
 #endif
 
-#if CONFIG_FKMG_UART_NO_OPTIMIZATIONS
+#if CONFIG_FKMG_USB_NO_OPTIMIZATIONS
 #pragma GCC pop_options
 #endif

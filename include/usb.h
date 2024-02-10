@@ -1,14 +1,13 @@
 /*******************************************************************************
- * @brief Potentiometer interface.
+ * @brief USB Thread.
  *
- * This module is the public api to interface with potentiometers. The pots are
- * ...
+ * This module is the public api to interface with USB. 
  *
  * @example
  */
 
-#ifndef FKMG_LED_DRIVER_H
-#define FKMG_LED_DRIVER_H
+#ifndef FKMG_USB_H
+#define FKMG_USB_H
 
 /* In case C++ needs to use anything here */
 #ifdef __cplusplus
@@ -21,10 +20,16 @@ extern “C” {
 
 #include <zephyr/kernel.h>
 
-#include "led_driver/instance.h"
-#include "led_driver/instance_cfg.h"
-#include "led_driver/listener.h"
-#include "led_driver/listener_cfg.h"
+#include "usb/instance.h"
+#include "usb/instance_cfg.h"
+#include "usb/listener.h"
+#include "usb/listener_cfg.h"
+
+
+/* *****************************************************************************
+ * Defines
+ */
+
 
 /* *****************************************************************************
  * Public
@@ -41,15 +46,7 @@ extern “C” {
  * @param[in] p_cfg Pointer to the filled-in configuration struct. See the
  * struct for details.
  */
-void LED_Driver_Init_Instance(struct LED_Driver_Instance_Cfg * p_cfg);
-
-void write_led_data_to_spi(bool channel, uint16_t step, uint16_t offset, uint16_t value);
-
-enum LED_STATE {
-    LED_DISARM,     // 0
-    LED_ARM,        // 1
-    LED_STEP,       // 2
-};
+void USB_Init_Instance(struct USB_Instance_Cfg * p_cfg);
 
 
 /**
@@ -57,8 +54,8 @@ enum LED_STATE {
  * @param[in] p_dcfg Pointer to the filled-in deconfiguration struct. See the
  * struct for details.
  */
-#if CONFIG_FKMG_LED_DRIVER_ALLOW_SHUTDOWN
-void LED_Driver_Deinit_Instance(struct LED_Driver_Instance_Dcfg * p_dcfg);
+#if CONFIG_FKMG_USB_ALLOW_SHUTDOWN
+void USB_Deinit_Instance(struct USB_Instance_Dcfg * p_dcfg);
 #endif
 
 /**
@@ -66,10 +63,10 @@ void LED_Driver_Deinit_Instance(struct LED_Driver_Instance_Dcfg * p_dcfg);
  * @param[in] p_cfg Pointer to the filled-in configuration struct. See the
  * struct for details.
  */
-void LED_Driver_Add_Listener(struct LED_Driver_Listener_Cfg * p_cfg);
+void USB_Add_Listener(struct USB_Listener_Cfg * p_cfg);
 
-#if CONFIG_FKMG_LED_DRIVER_ALLOW_LISTENER_REMOVAL
-void LED_Driver_Remove_Listener(struct LED_Driver_Listener * p_lsnr);
+#if CONFIG_FKMG_USB_ALLOW_LISTENER_REMOVAL
+void USB_Remove_Listener(struct USB_Listener * p_lsnr);
 #endif
 
 /* Public API functions to consider:
@@ -79,4 +76,4 @@ void LED_Driver_Remove_Listener(struct LED_Driver_Listener * p_lsnr);
 }
 #endif
 
-#endif /* FKMG_LED_DRIVER_H */
+#endif /* FKMG_USB_H */

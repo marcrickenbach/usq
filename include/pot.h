@@ -73,6 +73,9 @@ void Pot_Remove_Listener(struct Pot_Listener * p_lsnr);
  *   occur. Value isn't changed; it is a way to force an event if asynchronous
  *   listeners need current value.
  */
+
+
+
 #ifdef __cplusplus
 }
 #endif

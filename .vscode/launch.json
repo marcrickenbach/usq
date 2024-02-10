@@ -31,8 +31,12 @@
 // 				"monitor halt",
 // 				"monitor reset",
 // 				"load ${workspaceFolder}/build/zephyr/zephyr.elf",
-// 				//"monitor reset",
+// 				"monitor reset",
 // 			],
+//             // "postLaunchCommands": [
+//             //     "monitor reset",
+//             //     "continue"
+//             // ],
 //             "runToEntryPoint": "main",
 // 			//"breakAfterReset": false,f
 //             // "svdFile": "${workspaceFolder:project}/boards/imxrt1062.svd",

@@ -21,6 +21,7 @@ set(app_sources
     src/main.c
     src/sequencer.c
     src/pot.c
+    src/usb.c
 
     # Add other source files here
 )
@@ -29,5 +30,6 @@ target_sources(app PRIVATE ${app_sources})
 
 # Main Include Directory
 target_include_directories(app PRIVATE include)
+
 
 

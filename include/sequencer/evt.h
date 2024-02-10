@@ -40,6 +40,8 @@ enum Sequencer_Evt_Sig{
     k_Seq_Evt_Sig_Btn_Value_Changed,
     k_Seq_Evt_Sig_LED_Write_Ready,
     k_Seq_Evt_Sig_MIDI_Write_Ready,
+    k_Seq_Evt_Sig_Change_Default_Levels,
+    k_Seq_Evt_Sig_Reset_LED,
     k_Seq_Evt_Sig_End,                        // Exclusive
     k_Seq_Evt_Sig_Max = k_Seq_Evt_Sig_End - 1,// Inclusive
     k_Seq_Evt_Sig_Lst = k_Seq_Evt_Sig_End - 1,// Inclusive
@@ -77,8 +79,8 @@ struct Sequencer_Evt_Btn_Value_Changed{
 
 
 /* Data signal k_Seq_Evt_Sig_LED_Write_Ready can generate*/
-struct Sequencer_Evt_LED_Write_Ready{
-    enum Sequencer_Id id;
+struct Sequencer_Evt_LED_Reset_LED{
+    bool channel;
     uint16_t step;
     uint8_t offset;
     uint16_t val; 
@@ -94,6 +96,11 @@ struct Sequencer_Evt_MIDI_Write_Ready{
     uint8_t offset;
 };
 
+
+struct Sequencer_Evt_Change_Default_Levels{
+    bool armed[16];
+};
+
 /* Events (i.e. signal + signal's data if any) that can be generated. */
 struct Sequencer_Evt{
 	enum Sequencer_Evt_Sig sig;
@@ -102,9 +109,9 @@ struct Sequencer_Evt{
         struct Sequencer_Evt_Step_Occurred              stepped;
         struct Sequencer_Evt_Pot_Value_Changed          pot_changed;
         struct Sequencer_Evt_Btn_Value_Changed          btn_changed;
-        struct Sequencer_Evt_LED_Write_Ready            led_write;
         struct Sequencer_Evt_MIDI_Write_Ready           midi_write;
-
+        struct Sequencer_Evt_Change_Default_Levels      def_lvl;
+        struct Sequencer_Evt_LED_Reset_LED              reset;
 	}data;
 };
 

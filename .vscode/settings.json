@@ -59,6 +59,13 @@
         "utility": "c",
         "variant": "c",
         "smf.h": "c",
-        "button.h": "c"
+        "button.h": "c",
+        "i2c.h": "c",
+        "log.h": "c",
+        "compare": "c",
+        "usbd.h": "c",
+        "clock_control.h": "c",
+        "slist.h": "c",
+        "future": "c"
     },
 }

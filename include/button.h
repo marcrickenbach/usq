@@ -31,8 +31,6 @@ extern “C” {
  */
 
 #define MCP23017_ADDR           0x20
-#define MCP23017_CTRL_WRITE     0x40
-#define MCP23017_CTRL_READ      0x41
 
 #define CONFIG_BUTTON_8_BIT_MODE    1
 
@@ -113,7 +111,6 @@ extern “C” {
 #define CONFIG_IOCON_SEQOP      (1U<<5)
 #define CONFIG_IOCON_MIRROR     (1U<<6)
 #define CONFIG_IOCON_BANK       (1U<<7)
-
 
 
 /* *****************************************************************************

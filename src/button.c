@@ -12,16 +12,18 @@
 
 #include "button.h"
 
+#include "button/private/sm_evt.h"
+#include "button/private/module_data.h"
+
 #include <zephyr/smf.h>
 #include <zephyr/kernel.h>
 
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
+#include <zephyr/drivers/dma.h>
 
 #include <assert.h>
 
-#include "button/private/sm_evt.h"
-#include "button/private/module_data.h"
 
 /* *****************************************************************************
  * Constants, Defines, and Macros
@@ -36,11 +38,12 @@
 #define BUTTON_PINS         DT_PATH(zephyr_user)
 #define I2C2_NODE           DT_NODELABEL(i2c2)
 
-#define DEBOUNCE_DELAY      K_MSEC(10)
+#define DEBOUNCE_DELAY      10
 
-#define MCP23017_ADDR       0x20        // Adjust the address based on your hardware setup
+#define MCP23017_ADDR       0x20
 
 #define GPIO_PINS           DT_PATH(zephyr_user)
+
 
 /* *****************************************************************************
  * Debugging
@@ -63,16 +66,14 @@ static struct button_module_data button_md = {0};
 /* Convenience accessor to keep name short: md - module data. */
 #define md button_md
 
-const struct gpio_dt_spec button_input  = GPIO_DT_SPEC_GET(BUTTON_PINS, sw_input_gpios); 
-
 const struct device * i2c_dev = DEVICE_DT_GET(I2C2_NODE);
 
+// const struct gpio_dt_spec button_input  = GPIO_DT_SPEC_GET(BUTTON_PINS, sw_input_gpios); 
 const struct gpio_dt_spec sw_input_int  = GPIO_DT_SPEC_GET(GPIO_PINS, sw_input_gpios);
 const struct gpio_dt_spec sw_address_0  = GPIO_DT_SPEC_GET(GPIO_PINS, sw_addr_0_gpios);
 const struct gpio_dt_spec sw_address_1  = GPIO_DT_SPEC_GET(GPIO_PINS, sw_addr_1_gpios);
 const struct gpio_dt_spec sw_address_2  = GPIO_DT_SPEC_GET(GPIO_PINS, sw_addr_2_gpios);
 
-uint32_t test = 0;
 
 /* *****************************************************************************
  * Private
@@ -100,34 +101,10 @@ static struct Button_Instance * sm_ctx_to_instance(struct smf_ctx * p_sm_ctx)
     return(NULL);
 }
 
-static enum Button_Id next_button(enum Button_Id id)
-{
-    return((id + 1) % k_Button_Id_Cnt);
-}
 
 /* **************
  * Listener Utils
  * **************/
-
-#if CONFIG_FKMG_BUTTON_RUNTIME_ERROR_CHECKING
-static enum Button_Err_Id check_listener_cfg_param_for_errors(
-        struct Button_Listener_Cfg * p_cfg )
-{
-    if(!p_cfg
-    || !p_cfg->p_iface
-    || !p_cfg->p_lsnr) return(k_Button_Err_Id_Configuration_Invalid);
-
-    /* Is signal valid? */
-    if(p_cfg->sig > k_Button_Sig_Max)
-        return(k_Button_Err_Id_Configuration_Invalid);
-
-    /* Is callback valid? */
-    if(!p_cfg->cb)
-        return(k_Button_Err_Id_Configuration_Invalid);
-
-    return(k_Button_Err_Id_None);
-}
-#endif
 
 static void clear_listener(struct Button_Listener * p_lsnr)
 {
@@ -154,22 +131,6 @@ static void init_listener(struct Button_Listener * p_lsnr)
  * Instance Utils
  * **************/
 
-#if CONFIG_FKMG_BUTTON_RUNTIME_ERROR_CHECKING
-static enum Button_Err_Id check_instance_cfg_param_for_errors(
-        struct Button_Instance_Cfg * p_cfg)
-{
-    if(!p_cfg
-    || !p_cfg->p_inst
-    || !p_cfg->task.sm.p_thread
-    || !p_cfg->task.sm.p_stack
-    || !p_cfg->msgq.p_sm_evts) return(k_Button_Err_Id_Configuration_Invalid);
-
-    if(p_cfg->task.sm.stack_sz == 0) return(k_Button_Err_Id_Configuration_Invalid);
-
-    return(k_Button_Err_Id_None);
-}
-#endif
-
 static void add_instance_to_instances(
         struct Button_Instance  * p_inst)
 {
@@ -185,20 +146,39 @@ static void config_instance_queues(
 
 /* Forward reference */
 
-static void on_button_was_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
+static void on_button_press(const struct device *dev, struct gpio_callback *cb, uint32_t pins);
  
+/* Configure Button Interrupt and Callback */
+static void button_interrupt_init(struct Button_Instance * p_inst) 
+{
+    
+    int ret = gpio_pin_configure_dt(&sw_input_int, GPIO_INPUT | GPIO_PULL_UP);
+    assert(ret == 0); 
+
+    ret = gpio_pin_interrupt_configure_dt(&sw_input_int, GPIO_INT_EDGE_FALLING);
+    assert(ret == 0); 
+
+    gpio_init_callback(&p_inst->button_pressed_gpio_cb, on_button_press, BIT(sw_input_int.pin));
+
+    ret = gpio_add_callback(sw_input_int.port, &p_inst->button_pressed_gpio_cb);
+    assert(ret == 0);
+
+}
+
 
 static void button_gpio_init(struct Button_Instance * p_inst) {
 
 
-    if  (   !device_is_ready(sw_input_int.port) ||
-            !device_is_ready(sw_address_0.port) ||
-            !device_is_ready(sw_address_1.port) ||
-            !device_is_ready(sw_address_2.port)
+    if  (   !device_is_ready(sw_input_int.port)
+         ||   !device_is_ready(sw_address_0.port)
+         ||   !device_is_ready(sw_address_1.port)
+         ||   !device_is_ready(sw_address_2.port)
         ){
         LOG_ERR("GPIO Ready: Failed");
         return; 
     }
+
+    button_interrupt_init(p_inst);
 
     int ret = gpio_pin_configure_dt(&sw_address_0, GPIO_OUTPUT_LOW);
     if (ret < 0) {
@@ -218,112 +198,7 @@ static void button_gpio_init(struct Button_Instance * p_inst) {
         return;
     }
 
-
 }
-
-static void MCP23017_i2c_init(struct Button_Instance * p_inst) {
-
-    if (i2c_dev == NULL || !device_is_ready(i2c_dev)) {
-        LOG_ERR("I2C Device: Failed");
-        // return; 
-    }
-
-    if (i2c_configure(i2c_dev, I2C_SPEED_FAST) != 0) {
-        LOG_ERR("I2C Configure: Failed");
-        // return; 
-    }
-
-    uint8_t write_buf[2];
-    uint8_t read_buf[1];
-    int ret;
-
-    write_buf[0] = MCP23017_IOCONA;
-    write_buf[1] = 0x42;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    // write_buf[0] = MCP23017_IOCONB;
-    // write_buf[1] = 0x40;
-    // ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    // assert(ret == 0);
-
-    write_buf[0] = MCP23017_IODIRA;
-    write_buf[1] = 0x7F;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    write_buf[0] = MCP23017_IODIRB;
-    write_buf[1] = 0x7F;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    // Configure Polarity for all pins on ports A and B
-    write_buf[0] = MCP23017_IPOLA;
-    write_buf[1] = 0xFF;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    write_buf[0] = MCP23017_IPOLB;
-    write_buf[1] = 0xFF;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    // Enable interrupts for all pins on ports A and B
-    write_buf[0] = MCP23017_GPINTENA;
-    write_buf[1] = CONFIG_INT_ON_CHG_EN;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    write_buf[0] = MCP23017_GPINTENB;
-    write_buf[1] = CONFIG_INT_ON_CHG_EN;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    // Set default value for all pins on ports A and B
-    write_buf[0] = MCP23017_DEFVALA;
-    write_buf[1] = 0x00;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    write_buf[0] = MCP23017_DEFVALB;
-    write_buf[1] = 0x00;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    // Set interrupt control register for ports A and B
-    write_buf[0] = MCP23017_INTCONA;
-    write_buf[1] = 0xFF;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    write_buf[0] = MCP23017_INTCONB;
-    write_buf[1] = 0xFF;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    // Set pull-up resistor register for ports A and B
-    write_buf[0] = MCP23017_GPPUA;
-    write_buf[1] = CONFIG_ALL_PULLUP;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-    write_buf[0] = MCP23017_GPPUB;
-    write_buf[1] = CONFIG_ALL_PULLUP;
-    ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), MCP23017_ADDR);
-    assert(ret == 0);
-
-
-    // Read from MCP23017 registers to clear them. 
-    write_buf[0] = 0x10;  // Register address
-    ret = i2c_write_read(i2c_dev, MCP23017_ADDR, write_buf, 1, read_buf, 1);
-    assert(ret == 0);
-
-    write_buf[0] = 0x11;  // Register address
-    ret = i2c_write_read(i2c_dev, MCP23017_ADDR, write_buf, 1, read_buf, 1);
-    assert(ret == 0);
-}
-
-
 
 
 static void config_instance_deferred(
@@ -361,9 +236,6 @@ static void init_instance(struct Button_Instance * p_inst)
 {
     clear_instance(p_inst);
     init_instance_lists(p_inst);
-    #if CONFIG_FKMG_BUTTON_RUNTIME_ERROR_CHECKING
-    p_inst->err = k_Button_Err_Id_None;
-    #endif
 }
 
 /* ************
@@ -387,33 +259,6 @@ static void init_module(void)
     init_module_lists();
     md.initialized = true;
 }
-
-/* **************
- * Error Checking
- * **************/
-
-#if CONFIG_FKMG_BUTTON_RUNTIME_ERROR_CHECKING
-static void set_error(
-        struct Button_Instance * p_inst,
-        enum Button_Err_Id       err,
-        bool                  override)
-{
-    if(p_inst){
-        if((override                          )
-        || (p_inst->err == k_Button_Err_Id_None )){
-            p_inst->err = err;
-        }
-    }
-}
-
-static bool errored(
-        struct Button_Instance * p_inst,
-        enum Button_Err_Id       err )
-{
-    set_error(p_inst, err, NO_OVERRIDE);
-    return(err != k_Button_Err_Id_None);
-}
-#endif /* CONFIG_FKMG_BUTTON_RUNTIME_ERROR_CHECKING */
 
 /* ************
  * Broadcasting
@@ -457,24 +302,6 @@ static void broadcast_instance_initialized(
     broadcast(&evt, &lsnr);
 }
 
-#if CONFIG_FKMG_BUTTON_ALLOW_SHUTDOWN
-static void broadcast_interface_deinitialized(
-        struct Button_Instance * p_inst,
-        Button_Listener_Cb       cb)
-{
-    struct Button_Evt evt = {
-            .sig = k_Button_Instance_Deinitialized,
-            .data.inst_deinit.p_inst = p_inst
-    };
-
-    struct Button_Listener lsnr = {
-        .p_inst = p_inst,
-        .cb = cb
-    };
-
-    broadcast(&evt, &lsnr);
-}
-#endif
 
 
 /* **************
@@ -498,22 +325,6 @@ static void add_listener_for_signal_to_listener_list(
     sys_snode_t * p_node = &p_lsnr->node.listener;
     sys_slist_append(p_list, p_node);
 }
-
-#if CONFIG_FKMG_BUTTON_ALLOW_LISTENER_REMOVAL
-static bool find_list_containing_listener_and_remove_listener(
-    struct Button_Instance * p_inst,
-	struct Button_Listener * p_lsnr)
-{
-    for(enum Button_Sig sig = k_Button_Evt_Sig_Beg;
-                         sig < k_Button_Evt_Sig_End;
-                         sig++){
-        bool found_and_removed = sys_slist_find_and_remove(
-                &p_inst->list.listeners[sig], &p_lsnr->node);
-        if(found_and_removed) return(true);
-    }
-    return( false );
-}
-#endif
 
 static bool signal_has_listeners(
         struct Button_Instance * p_inst,
@@ -543,84 +354,225 @@ static void q_init_instance_event(struct Button_Instance_Cfg * p_cfg)
     q_sm_event(p_inst, &evt);
 }
 
+static void q_btn_pressed_event(struct Button_Instance * p_inst, struct Button_SM_Evt * p_evt)
+{
+    struct Button_SM_Evt evt = {
+            .sig = k_Button_SM_Evt_Sig_Pressed,
+            .data.pressed.btn_state[0] = p_evt->data.pressed.btn_state[0],
+            .data.pressed.btn_state[1] = p_evt->data.pressed.btn_state[1]
+    };
+    q_sm_event(p_inst, &evt);
+}
 
-static void on_button_was_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
 
+/***********************************************
+*   MCP23017 I2C Functions
+************************************************/
+
+/* This function was scheduled by our press button interrupt callback. First we clear our last read buffers, then we flush the interrupt registers so that we disable interrupts while we process our data. When we read from the interrupt capture and gpio a/b registers, we both receive the information we need and clear the interrupt flags, setting the signal high again to wait for the next interrupt. We then schedule an event with the new reading data. Read from INTFA and INTFB to fetch interrupt flag, as well as the INTCAPA/B regs to clear interrupt flags. Doing it in this way allows us to check the flag registers against the capture registers, which hold on to the previous data. This will allow us to distinguish between multiple button pushes on the same button simply by comparing corresponding elements -- those with the same iformation designate a push. */
+
+static const uint8_t btn_map_port[16] = {   4, 5, 6, 7, 15, 14, 13, 12, 
+                                            11, 10, 9, 8, 0, 1, 2, 3}; 
+
+
+static int debounce (void) {
+    static uint8_t switch_state = 0; 
+    switch_state = (switch_state << 1) | !gpio_pin_get(sw_input_int.port, sw_input_int.pin);
+    if (switch_state == 0x00) {
+        switch_state = 0xFF;
+        return 1; 
+    }
+}
+
+
+/* GPIO Callback */
+static void on_button_press(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
     struct Button_Instance * p_inst = CONTAINER_OF(cb, struct Button_Instance, button_pressed_gpio_cb);
 
-    struct Button_SM_Evt evt = {
-        .sig = k_Button_SM_Evt_Sig_Pressed,
-    }; 
-
-    q_sm_event(p_inst, &evt);
-
-}
-
-
-
-static bool handle_do_debounce(struct Button_Instance * p_inst)
-{
-    uint8_t btn_state[2];
-
-    // Read Port A
-    i2c_write_read(i2c_dev, MCP23017_ADDR, MCP23017_GPIOA, 1, &btn_state[0], 1);
-
-    // Read Port B
-    i2c_write_read(i2c_dev, MCP23017_ADDR, MCP23017_GPIOB, 1, &btn_state[1], 1);
-
-    if (btn_state[0] == p_inst->debounce.state[0] && 
-        btn_state[1] == p_inst->debounce.state[1]) {
-        return true; 
-    } else {
-        return false; 
+    /* Debounce */
+    static uint64_t time_last = 0;
+    uint64_t current_time = k_uptime_get();
+    if (current_time - time_last < DEBOUNCE_DELAY) {
+        // do we need to clear the interrupt, assuming it's still up after a false press? 
+        return;
     }
 
+    time_last = current_time;
+
+        /* q_sm_event for k_Button_SM_Evt_Sig_Pressed */
+        struct Button_SM_Evt evt = {
+            .sig = k_Button_SM_Evt_Sig_Pressed,
+        };
+
+        q_sm_event(p_inst, &evt);
 }
 
-static void read_button_press_i2c(struct Button_Instance * p_inst) 
+
+static int flush_i2c_interrupt_registers(void) {
+
+    static const uint8_t flush_registers[2] = {0x00, 0x00};
+    
+    int ret = i2c_burst_write(i2c_dev, MCP23017_ADDR, MCP23017_GPINTENA, flush_registers, sizeof(flush_registers));
+   
+    if (ret < 0) {
+        LOG_ERR("Could not write to MCP23017 registers, %d", ret);
+    }
+
+    return ret;
+}
+
+
+static void clear_previous_button_readings(struct Button_Instance * p_inst) 
 {
+    memset(p_inst->read_buf, 0, sizeof(p_inst->read_buf));
+    memset(p_inst->btn_data, 0, sizeof(p_inst->btn_data));
+}
 
-    uint8_t buf[1]; 
-    uint8_t btn_state[2];
 
-    // Read Port A
-    buf[0] = MCP23017_GPIOA;
-    i2c_write_read(i2c_dev, MCP23017_ADDR, buf, 1, &btn_state[0], 1);
+static int button_read_data(struct Button_Instance * p_inst)
+{       
+    int ret = i2c_burst_read(i2c_dev, MCP23017_ADDR, MCP23017_INTCAPA, p_inst->read_buf, sizeof(p_inst->read_buf)); 
+    if (ret < 0) {
+        LOG_ERR("Could not read from MCP23017 registers, %d", ret);
+    } 
+    return ret; 
+}
 
-    // Read Port B
-    buf[0] = MCP23017_GPIOB;
-    i2c_write_read(i2c_dev, MCP23017_ADDR, buf, 1, &btn_state[1], 1);
 
-    /*  Save the state of the button press of each port. 
-        Debounce routine will compare a new reading to this previous state.
-     */ 
+static int refill_i2c_interrupt_registers(void) {
+
+    static const uint8_t refill_registers[2] = {0xFF, 0xFF};
+    
+    int ret = i2c_burst_write(i2c_dev, MCP23017_ADDR, MCP23017_GPINTENA, refill_registers, sizeof(refill_registers));
+    
+    if (ret < 0) {
+        LOG_ERR("Could not write to MCP23017 registers, %d", ret);
+    }
+    
+    return ret;
+}
+
+
+static uint8_t button_parse_readings(uint8_t * btn_readings) 
+{
+    int button = 0; 
 
     for (int i = 0; i < 2; i++) {
-        p_inst->debounce.state[i] = btn_state[i];
+
+        if (btn_readings[i] == btn_readings[i+2]) {
+            
+            for (int k = 0; k <8; k++) {
+                if (btn_readings[i] & (1 << k)) {
+                    
+                    // tells us which button was pressed
+                    button = btn_map_port[k + (i * 8)]; 
+                    return button;
+                }
+            }
+        }
     }
 
+    // if we get here, return an error code that cannot be a button number
+    return -1;
 }
 
 
-static void on_debounce_timer_expiry(struct k_timer * p_timer)
+static void button_after_press_work_handler(struct Button_Instance *p_inst) 
 {
-    struct Button_Instance * p_inst = CONTAINER_OF(p_timer, struct Button_Instance, timer.debounce);
+    uint8_t btn_readings[4];
+    uint8_t temp = p_inst->btn_data[0]; 
+    uint8_t btn_pressed;
 
-    struct Button_SM_Evt evt = {
-        .sig = k_Button_SM_Evt_Sig_Do_Debounce,
+    memcpy(btn_readings, p_inst->read_buf, sizeof(p_inst->read_buf));
+    memcpy(btn_pressed, temp, sizeof(temp));
+
+    // Return button value (x of 15)
+    btn_pressed = button_parse_readings(&btn_readings);
+    
+    if (btn_pressed < 0) {
+        LOG_ERR("Could not parse button readings, %d", btn_pressed); 
+        return; 
+    }
+
+    struct Button_Evt evt = {
+        .sig = k_Button_Evt_Sig_Pressed,
+        .data.pressed.btn_id = btn_pressed,
     };
 
-    q_sm_event(p_inst, &evt);
-    
-    // gpio_pin_interrupt_configure_dt(&button_input, GPIO_INT_EDGE_TO_ACTIVE);
+    broadcast_event_to_listeners(p_inst, &evt);
 }
 
 
-static void set_debounce_timer(struct Button_Instance * p_inst) 
+
+
+/* Helper Functions */
+static uint8_t init_read_expander_register(uint8_t reg) 
 {
-    k_timer_init(&p_inst->timer.debounce, on_debounce_timer_expiry, NULL);
-    k_timer_start(&p_inst->timer.debounce, DEBOUNCE_DELAY, K_NO_WAIT);
+    uint8_t buf[1] = {reg};
+    uint8_t read_val[1] = {0};
+
+    int ret = i2c_write_read(i2c_dev, MCP23017_ADDR, buf, 1, read_val, 1);
+    assert(ret == 0);
+
+    return read_val[0];
 }
+
+
+static int init_write_both_expander_registers(uint8_t reg, uint8_t val) 
+{
+    uint8_t reg_write[3] = {reg, val, val};
+
+    int ret = i2c_write(i2c_dev, reg_write, sizeof(reg_write), MCP23017_ADDR);
+
+}
+
+
+/* Init Functions */
+
+static void MCP23017_i2c_init(struct Button_Instance * p_inst) 
+{
+    uint8_t write_buf[2];
+    uint8_t read_buf[1];
+
+    int ret = i2c_dev == NULL || !device_is_ready(i2c_dev); 
+    assert(ret == 0);   
+
+    i2c_configure(i2c_dev, I2C_SPEED_FAST);
+    assert(ret == 0);
+
+    // mirror interrupts, disable sequential mode, open drain
+    ret = init_write_both_expander_registers(MCP23017_IOCONA, 0b01000100);
+    assert(ret == 0);
+
+    // Set direction
+    ret = init_write_both_expander_registers(MCP23017_IODIRA, 0x7F);
+    assert(ret == 0);
+
+    // enable pull-up on switches
+    ret = init_write_both_expander_registers(MCP23017_GPPUA, 0xFF);
+    assert(ret == 0);
+
+    // invert polarity
+    ret = init_write_both_expander_registers(MCP23017_IPOLA, 0xFF);
+    // assert(ret == 0);
+
+    // set interrupt-on-change
+    ret = init_write_both_expander_registers(MCP23017_INTCONA, 0xFF);
+    assert(ret == 0);
+
+    // enable all interrupts
+    ret = init_write_both_expander_registers(MCP23017_GPINTENA, 0xFF);
+    assert(ret == 0);
+
+    // Read from MCP23017 registers to clear them. 
+    init_read_expander_register(MCP23017_INTCAPA);
+    init_read_expander_register(MCP23017_INTCAPB);
+}
+
+
+
+
 
 /* **********
  * FSM States
@@ -640,16 +592,14 @@ static void set_debounce_timer(struct Button_Instance * p_inst)
  *
  *  State run:
  *
- *  |entry             |  |run             |  |exit           |
- *  |------------------|  |----------------|  |---------------|
- *  |not implemented   |  |convert:        |  |not implemented|
- *  |                  |  |* dac calculate |
- *                        |* quantize cv   |
- *                        |* filter        |
- *                        |deinit:         |
- *                        |* ->deinit      |
- *                        |all others:     |
- *                        |* assert        |
+ *  |entry             |  |run               |  |exit           |
+ *  |------------------|  |------------------|  |---------------|
+ *  |not implemented   |  |Button Press      |  |not implemented|
+ *  |                  |  |* flush i2c regs  |
+ *                        |* clear prev read |
+ *                        |* read i2c data   |
+ *                        |* process btn read|
+ *                        |* refill i2c regs |
  *
  *  State deinit:
  *
@@ -701,7 +651,7 @@ static void state_init_run(void * o)
     assert(p_evt->sig == k_Button_SM_Evt_Sig_Init_Instance);
 
     /* We init'd required params on the caller's thread (i.e.
-     * DAC_Init_Instance()), now finish the job. Since this is an
+     * Button_Init_Instance()), now finish the job. Since this is an
      * Init_Instance event the data contains the intance cfg. */
     struct Button_SM_Evt_Sig_Init_Instance * p_ii = &p_evt->data.init_inst;
     
@@ -740,48 +690,34 @@ static void state_run_run(void * o)
             break;
 
         case k_Button_SM_Evt_Sig_Pressed:
-            
-            read_button_press_i2c(p_inst);
-            set_debounce_timer(p_inst);
 
-            break;
+            flush_i2c_interrupt_registers();
+            clear_previous_button_readings(p_inst);
 
-        case k_Button_SM_Evt_Sig_Do_Debounce:
-
-            bool db = handle_do_debounce(p_inst);
-
-            if (db) {
-                struct Button_SM_Evt db_evt = {
-                    .sig = k_Button_SM_Evt_Sig_Debounced,
-                    .data.debounced.btn_state[0] = p_inst->debounce.state[0],
-                    .data.debounced.btn_state[1] = p_inst->debounce.state[1],
-                };
-                q_sm_event(p_inst, &db_evt);
+            int ret = button_read_data(p_inst);
+            if (ret < 0) {
+                LOG_ERR("Could not read from MCP23017 registers, %d", ret);
             }
-        
-        break; 
 
-        case k_Button_SM_Evt_Sig_Debounced:
+            button_after_press_work_handler(p_inst);
 
-            /* A successful debounce has occurred. p_debounced contains the debounced button states. */
+            struct Button_SM_Evt evt = {
+                .sig = k_Button_SM_Evt_Sig_Reset_Interrupt,
+            };
+            q_sm_event(p_inst, &evt);
 
-            struct Button_SM_Evt_Sig_Debounced * p_debounced = &p_evt->data.debounced;
-
-            struct Button_Evt btn_pressed = {
-                .sig = k_Button_Evt_Sig_Pressed,
-                .data.pressed.state[0] = p_debounced->btn_state[0],
-                .data.pressed.state[1] = p_debounced->btn_state[1],
-            }; 
-
-            broadcast_event_to_listeners(p_inst, &btn_pressed);
+            /* FIXME: I'm not a fan of this delay. Switching out IC for SPI version so I'll have to redo this driver anyway, so if this works, keep it for now. */
+            k_msleep(250);
 
             break;
-        case k_Button_SM_Evt_Sig_Released:
-            #if 0 /* Pseudo code: */
 
-            If there's anything we need to take care of on button release we can do it here. 
+        case k_Button_SM_Evt_Sig_Reset_Interrupt:
+            
+            ret = refill_i2c_interrupt_registers();
+            if (ret < 0) {
+                LOG_ERR("Could not write to MCP23017 registers, %d", ret);
+            }
 
-            #endif
             break;
         #if CONFIG_FKMG_BUTTON_SHUTDOWN_ENABLED
         case k_Button_Evt_Sig_Instance_Deinitialized:
@@ -791,25 +727,12 @@ static void state_run_run(void * o)
     }
 }
 
-/* Deinit state responsibility is to clean up before exiting thread. */
-#if CONFIG_FKMG_BUTTON_SHUTDOWN_ENABLED
-static void state_deinit_run(void * o)
-{
-    struct smf_ctx * p_sm = o;
-    struct Button_Instance * p_inst = sm_ctx_to_instance(p_sm);
-
-    /* Get the event. */
-    struct Button_SM_Evt * p_evt = &p_inst->sm_evt;
-
-    /* TODO */
-}
-#endif
 
 static const struct smf_state states[] = {
     /*                                      entry               run  exit */
     [  init] = SMF_CREATE_STATE(           NULL,   state_init_run, NULL),
     [   run] = SMF_CREATE_STATE(state_run_entry,    state_run_run, NULL),
-    #if CONFIG_FKMG_DAC_SHUTDOWN_ENABLED
+    #if CONFIG_FKMG_BUTTON_SHUTDOWN_ENABLED
     [deinit] = SMF_CREATE_STATE(           NULL, state_deinit_run, NULL),
     #endif
 };
@@ -818,27 +741,7 @@ static const struct smf_state states[] = {
  * Thread
  * ******/
 
-#if CONFIG_FKMG_BUTTON_ALLOW_SHUTDOWN
-/* Since there is only the "join" facility to know when a thread is shut down,
- * and that isn't appropriate to use since it will put the calling thread to
- * sleep until the other thread is shut down, we set up a delayable system work
- * queue event to check that the thread is shut down and then call any callback
- * that is waiting to be notified. */
-void on_thread_shutdown(struct k_work *item)
-{
-    struct Button_Instance * p_inst =
-            CONTAINER_OF(item, struct Button_Instance, work);
-
-    char * thread_state_str = "dead";
-    k_thread_state_str(&p_inst->thread, thread_state_str, sizeof(thread_state_str));
-    bool shut_down = strcmp( thread_state_str, "dead" ) == 0;
-
-    if(!shut_down) k_work_reschedule(&p_inst->work, K_MSEC(1));
-    else broadcast_instance_deinitialized(p_inst);
-}
-#endif
-
-static void thread(void * p_1, /* struct DAC_Instance* */
+static void thread(void * p_1, /* struct Button_Instance* */
         void * p_2_unused, void * p_3_unused)
 {
     struct Button_Instance * p_inst = p_1;
@@ -859,14 +762,6 @@ static void thread(void * p_1, /* struct DAC_Instance* */
         run = smf_run_state(SMF_CTX(p_sm)) == 0;
     }
 
-    #if CONFIG_FKMG_BUTTON_ALLOW_SHUTDOWN
-    /* We're shutting down. Schedule a work queue event to check that the
-     * thread exited and call back anything. */
-    if(should_callback_on_exit(p_inst)){
-        k_work_init_delayable( &p_inst->work, on_thread_shutdown);
-        k_work_schedule(&p_inst->work, K_MSEC(1));
-    }
-    #endif
 }
 
 static void start_thread(
@@ -902,15 +797,6 @@ void Button_Init_Instance(struct Button_Instance_Cfg * p_cfg)
     /* Get pointer to instance to configure. */
     struct Button_Instance * p_inst = p_cfg->p_inst;
 
-    #if CONFIG_FKMG_BUTTON_RUNTIME_ERROR_CHECKING
-    /* Check instance configuration for errors. */
-    if(errored(p_inst, check_instance_cfg_param_for_errors(p_cfg))){
-        assert(false);
-        return;
-    }
-    #endif
-
-
     init_module();
     init_instance(p_inst);
     config_instance_immediate(p_inst, p_cfg);
@@ -919,39 +805,15 @@ void Button_Init_Instance(struct Button_Instance_Cfg * p_cfg)
     q_init_instance_event(p_cfg);
 }
 
-#if CONFIG_FKMG_BUTTON_ALLOW_SHUTDOWN
-void DAC_Deinit_Instance(struct Button_Instance_Dcfg * p_dcfg)
-{
-    #error "Not implemented yet!"
-}
-#endif
 
 void Button_Add_Listener(struct Button_Listener_Cfg * p_cfg)
 {
-    #if CONFIG_FKMG_BUTTON_RUNTIME_ERROR_CHECKING
-    /* Get pointer to instance. */
-    struct Button_Instance * p_inst = p_cfg->p_inst;
-
-    /* Check listener instance configuration for errors. */
-    if(errored(p_inst, check_listener_cfg_param_for_errors(p_cfg))){
-        assert(false);
-        return;
-    }
-    #endif
-
     struct Button_Listener * p_lsnr = p_cfg->p_lsnr;
     init_listener(p_lsnr);
     config_listener(p_lsnr, p_cfg);
     add_listener_for_signal_to_listener_list(p_cfg);
 }
 
-
-#if CONFIG_FKMG_BUTTON_ALLOW_LISTENER_REMOVAL
-void Button_Remove_Listener(struct Button_Listener * p_lsnr)
-{
-    #error "Not implemented yet!"
-}
-#endif
 
 #if CONFIG_FKMG_BUTTON_NO_OPTIMIZATIONS
 #pragma GCC pop_options
