@@ -460,7 +460,7 @@ void pack_and_write_led_data() {
     led_latch_enable_pulse(true);
 }
 
-static void led_startup_animation(int duration_ms) 
+void led_startup_animation(int duration_ms) 
 {
 
     int brightness_change_per_step = HALF_BRIGHTNESS / STEPS;
@@ -750,7 +750,7 @@ static void state_init_run(void * o)
 
     led_driver_init(p_inst);
 
-    led_startup_animation(1000);
+    // led_startup_animation(1000);
 
     smf_set_state(SMF_CTX(p_sm), &states[run]);
 }
