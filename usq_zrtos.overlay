@@ -9,10 +9,9 @@
 
 /{
     zephyr,user {
-
         gate-high-gpios     =   <&gpioa 15 GPIO_ACTIVE_HIGH>;
         gate-low-gpios      =   <&gpioc 10 GPIO_ACTIVE_HIGH>;
-
+        
         led-17-gpios        =   <&gpioc 11 GPIO_ACTIVE_HIGH>;
         led-18-gpios        =   <&gpioc 12 GPIO_ACTIVE_HIGH>;
         led-19-gpios        =   <&gpiod 2 GPIO_ACTIVE_HIGH>;
@@ -22,26 +21,26 @@
         adc-addr-0-gpios    =   <&gpiob 0 GPIO_ACTIVE_HIGH>;
         adc-addr-1-gpios    =   <&gpiob 1 GPIO_ACTIVE_HIGH>;
         adc-addr-2-gpios    =   <&gpiob 2 GPIO_ACTIVE_HIGH>;
-
+        
         adc-addr-bank-0-gpios = <&gpioc 4 GPIO_ACTIVE_LOW>;
         adc-addr-bank-1-gpios = <&gpioc 5 GPIO_ACTIVE_LOW>;
         adc-addr-bank-2-gpios = <&gpioc 6 GPIO_ACTIVE_LOW>;
         adc-addr-bank-3-gpios = <&gpioc 7 GPIO_ACTIVE_LOW>;
         adc-addr-bank-4-gpios = <&gpioc 8 GPIO_ACTIVE_LOW>;
-
+        
         sw-addr-0-gpios     =   <&gpioa 0 GPIO_ACTIVE_HIGH>;
         sw-addr-1-gpios     =   <&gpioc 3 GPIO_ACTIVE_HIGH>;
         sw-addr-2-gpios     =   <&gpioc 2 GPIO_ACTIVE_HIGH>;
-
+        
         sw-input-gpios      =   <&gpioa 1 GPIO_PULL_UP>;
-
+        
         pp-trigger-high-gpios = <&gpiob 6 GPIO_PULL_DOWN>;
         rst-trigger-high-gpios = <&gpiob 7 GPIO_PULL_DOWN>;
         pp-trigger-low-gpios = <&gpiob 9 GPIO_PULL_DOWN>;
         rst-trigger-low-gpios = <&gpiob 8 GPIO_PULL_DOWN>;
-
+        
         mode-global-gpios = <&gpiob 5 GPIO_PULL_DOWN>;
-
+        
         led-le-gpios = <&gpiob 12 GPIO_PULL_DOWN>;
         led-blank-gpios = <&gpiob 14 GPIO_PULL_DOWN>;
     };
@@ -51,7 +50,6 @@
         zephyr,shell-uart = &usart1;
         zephyr,uart-mcumgr = &usart1;
     };
-
 };
 
 /**************************************** 
