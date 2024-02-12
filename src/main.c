@@ -20,8 +20,8 @@
 #include "dac.h"
 #include "dac/private/sm_evt.h"
 
-#include "led_driver.h"
-#include "led_driver/private/sm_evt.h"
+#include "led.h"
+#include "led/private/sm_evt.h"
 
 #include "pot.h"
 #include "pot/id.h"

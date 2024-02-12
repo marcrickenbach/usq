@@ -17,7 +17,7 @@ set(app_sources
     src/button.c
     src/dac.c
     src/uart.c
-    src/led_driver.c
+    src/led.c
     src/main.c
     src/sequencer.c
     src/pot.c

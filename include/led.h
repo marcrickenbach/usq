@@ -21,10 +21,10 @@ extern “C” {
 
 #include <zephyr/kernel.h>
 
-#include "led_driver/instance.h"
-#include "led_driver/instance_cfg.h"
-#include "led_driver/listener.h"
-#include "led_driver/listener_cfg.h"
+#include "led/instance.h"
+#include "led/instance_cfg.h"
+#include "led/listener.h"
+#include "led/listener_cfg.h"
 
 /* *****************************************************************************
  * Public

@@ -10,7 +10,7 @@
  * Includes
  */
 
-#include "led_driver.h"
+#include "led.h"
 
 #include <zephyr/smf.h>
 #include <zephyr/kernel.h>
@@ -25,8 +25,8 @@
 
 #include <stdlib.h>
 
-#include "led_driver/private/sm_evt.h"
-#include "led_driver/private/module_data.h"
+#include "led/private/sm_evt.h"
+#include "led/private/module_data.h"
 
 /* *****************************************************************************
  * Constants, Defines, and Macros
@@ -66,7 +66,7 @@ static bool led_animated_complete = false;
 #if CONFIG_FKMG_LED_DRIVER_NO_OPTIMIZATIONS
 #pragma GCC push_options
 #pragma GCC optimize ("Og")
-#warning "led_driver.c unoptimized!"
+#warning "led.c unoptimized!"
 #endif
 
 #include <zephyr/logging/log.h>
