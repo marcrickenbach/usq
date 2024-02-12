@@ -13,4 +13,4 @@ for i in range(LUT_SIZE):
     lut[i] = min(group_midpoint, ADC_MAX_VALUE)  # Ensure not to exceed ADC_MAX_VALUE
 
 # Print the LUT (or part of it, for brevity)
-print(lut)  # Print the first 100 entries as an example
+print(lut)
