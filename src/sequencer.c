@@ -193,8 +193,6 @@ static struct nvs_fs fs;
 static void nvs_init(void)
 {
     int rc = 0, cnt = 0, cnt_his = 0;
-    uint16_t steps; 
-    uint8_t mode; 
     
     struct flash_pages_info info;
     
