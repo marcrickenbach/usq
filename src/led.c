@@ -277,7 +277,6 @@ static void led_blank_timer_callback (const struct device *timer_dev,
 
 static void init_led_blank_timer(struct LED_Driver_Instance * p_inst)
 {
-
     if (!device_is_ready(led_driver_blank_timer)){
         LOG_ERR("LED Blank Timer Config: FAILED.\n");
         return;
