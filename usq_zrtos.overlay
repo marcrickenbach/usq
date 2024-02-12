@@ -10,7 +10,7 @@
 /{
     zephyr,user {
 
-        gate-high-gpios      =   <&gpioa 15 GPIO_ACTIVE_HIGH>;
+        gate-high-gpios     =   <&gpioa 15 GPIO_ACTIVE_HIGH>;
         gate-low-gpios      =   <&gpioc 10 GPIO_ACTIVE_HIGH>;
 
         led-17-gpios        =   <&gpioc 11 GPIO_ACTIVE_HIGH>;
@@ -84,11 +84,11 @@
 
 
 &rcc {
-	clocks = <&pll>;
-	clock-frequency = <DT_FREQ_M(168)>;
-	ahb-prescaler = <1>;
-	apb1-prescaler = <4>; // was 4 
-	apb2-prescaler = <2>; // was 2
+    clocks = <&pll>;
+    clock-frequency = <DT_FREQ_M(168)>;
+    ahb-prescaler = <1>;
+    apb1-prescaler = <4>; 
+    apb2-prescaler = <2>;
 };
 
 
@@ -96,7 +96,6 @@
     pinctrl-0 = <&adc1_in7_pa7>;  
     pinctrl-names = "default";
     st,adc-prescaler = <2>;
-    // st,adc-clock-source = <1>;
     status = "okay";  
 };
 
@@ -222,7 +221,6 @@
 };
 
 //Timer 4 for LED Driver Blank Pin Counter
-
 &timers4 {
     status = "okay";
     st,prescaler = <90>; // 90MHz -> 1MHz
