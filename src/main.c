@@ -300,28 +300,21 @@ static void on_button_press (struct Button_Evt *p_evt)
 
     USB_OTG_FS->GCCFG &= ~(1U<<21);
 
-
-    // /* Instance: Pot */
-    struct Pot_Instance_Cfg pot_inst_cfg = {
-        .p_inst = &pot_inst,
-        .task.sm.p_thread = &pot_thread,
-        .task.sm.p_stack = pot_thread_stack,
-        .task.sm.stack_sz = K_THREAD_STACK_SIZEOF(pot_thread_stack),
+     /* Instance: LED Driver */
+    struct LED_Driver_Instance_Cfg led_driver_inst_cfg = {
+        .p_inst = &led_driver_inst,
+        .task.sm.p_thread = &led_driver_thread,
+        .task.sm.p_stack = led_driver_thread_stack,
+        .task.sm.stack_sz = K_THREAD_STACK_SIZEOF(led_driver_thread_stack),
         .task.sm.prio = K_LOWEST_APPLICATION_THREAD_PRIO,
-        .msgq.p_sm_evts = &pot_sm_evt_q,
-        .cb = on_pot_instance_initialized,
+        .msgq.p_sm_evts = &led_driver_sm_evt_q,
+        .cb = on_led_driver_instance_initialized,
     };
-    Pot_Init_Instance(&pot_inst_cfg);
+    LED_Driver_Init_Instance(&led_driver_inst_cfg);
     wait_on_instance_initialized();
 
-    static struct Pot_Listener pot_changed_lsnr;
-    struct Pot_Listener_Cfg pot_lsnr_cfg = {
-        .p_inst = &pot_inst,
-        .p_lsnr = &pot_changed_lsnr, 
-        .sig     = k_Pot_Evt_Sig_Changed,
-        .cb      = on_pot_changed
-    };
-    Pot_Add_Listener(&pot_lsnr_cfg);
+    led_startup_animation(1000);
+
 
     /* Instance: DAC */
     struct DAC_Instance_Cfg dac_inst_cfg = {
@@ -334,19 +327,6 @@ static void on_button_press (struct Button_Evt *p_evt)
         .cb = on_dac_instance_initialized,
     };
     DAC_Init_Instance(&dac_inst_cfg);
-    wait_on_instance_initialized();
-
-     /* Instance: LED Driver */
-    struct LED_Driver_Instance_Cfg led_driver_inst_cfg = {
-        .p_inst = &led_driver_inst,
-        .task.sm.p_thread = &led_driver_thread,
-        .task.sm.p_stack = led_driver_thread_stack,
-        .task.sm.stack_sz = K_THREAD_STACK_SIZEOF(led_driver_thread_stack),
-        .task.sm.prio = K_LOWEST_APPLICATION_THREAD_PRIO,
-        .msgq.p_sm_evts = &led_driver_sm_evt_q,
-        .cb = on_led_driver_instance_initialized,
-    };
-    LED_Driver_Init_Instance(&led_driver_inst_cfg);
     wait_on_instance_initialized();
 
 
@@ -398,6 +378,28 @@ static void on_button_press (struct Button_Evt *p_evt)
     USB_Init_Instance(&usb_inst_cfg);
     wait_on_instance_initialized();
 
+    // /* Instance: Pot */
+    struct Pot_Instance_Cfg pot_inst_cfg = {
+        .p_inst = &pot_inst,
+        .task.sm.p_thread = &pot_thread,
+        .task.sm.p_stack = pot_thread_stack,
+        .task.sm.stack_sz = K_THREAD_STACK_SIZEOF(pot_thread_stack),
+        .task.sm.prio = K_LOWEST_APPLICATION_THREAD_PRIO,
+        .msgq.p_sm_evts = &pot_sm_evt_q,
+        .cb = on_pot_instance_initialized,
+    };
+    Pot_Init_Instance(&pot_inst_cfg);
+    wait_on_instance_initialized();
+
+    static struct Pot_Listener pot_changed_lsnr;
+    struct Pot_Listener_Cfg pot_lsnr_cfg = {
+        .p_inst = &pot_inst,
+        .p_lsnr = &pot_changed_lsnr, 
+        .sig     = k_Pot_Evt_Sig_Changed,
+        .cb      = on_pot_changed
+    };
+    Pot_Add_Listener(&pot_lsnr_cfg);
+    
     /* Instance: Sequencer */
     struct Sequencer_Instance_Cfg sequencer_inst_cfg = {
         .p_inst = &sequencer_inst,
