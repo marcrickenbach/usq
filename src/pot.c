@@ -172,26 +172,6 @@ static enum Pot_Id next_pot(enum Pot_Id id)
  * Listener Utils
  * **************/
 
-#if CONFIG_FKMG_POT_RUNTIME_ERROR_CHECKING
-static enum Pot_Err_Id check_listener_cfg_param_for_errors(
-        struct Pot_Listener_Cfg * p_cfg )
-{
-    if(!p_cfg
-    || !p_cfg->p_iface
-    || !p_cfg->p_lsnr) return(k_Pot_Err_Id_Configuration_Invalid);
-
-    /* Is signal valid? */
-    if(p_cfg->sig > k_Pot_Sig_Max)
-        return(k_Pot_Err_Id_Configuration_Invalid);
-
-    /* Is callback valid? */
-    if(!p_cfg->cb)
-        return(k_Pot_Err_Id_Configuration_Invalid);
-
-    return(k_Pot_Err_Id_None);
-}
-#endif
-
 static void clear_listener(struct Pot_Listener * p_lsnr)
 {
     memset(p_lsnr, 0, sizeof(*p_lsnr));
@@ -216,22 +196,6 @@ static void init_listener(struct Pot_Listener * p_lsnr)
 /* **************
  * Instance Utils
  * **************/
-
-#if CONFIG_FKMG_POT_RUNTIME_ERROR_CHECKING
-static enum Pot_Err_Id check_instance_cfg_param_for_errors(
-        struct Pot_Instance_Cfg * p_cfg)
-{
-    if(!p_cfg
-    || !p_cfg->p_inst
-    || !p_cfg->task.sm.p_thread
-    || !p_cfg->task.sm.p_stack
-    || !p_cfg->msgq.p_sm_evts) return(k_Pot_Err_Id_Configuration_Invalid);
-
-    if(p_cfg->task.sm.stack_sz == 0) return(k_Pot_Err_Id_Configuration_Invalid);
-
-    return(k_Pot_Err_Id_None);
-}
-#endif
 
 static void add_instance_to_instances(
         struct Pot_Instance  * p_inst)
@@ -294,9 +258,6 @@ static void init_instance(struct Pot_Instance * p_inst)
 {
     clear_instance(p_inst);
     init_instance_lists(p_inst);
-    #if CONFIG_FKMG_POT_RUNTIME_ERROR_CHECKING
-    p_inst->err = k_Pot_Err_Id_None;
-    #endif
 }
 
 
@@ -323,33 +284,6 @@ static void init_module(void)
     init_module_lists();
     md.initialized = true;
 }
-
-/* **************
- * Error Checking
- * **************/
-
-#if CONFIG_FKMG_POT_RUNTIME_ERROR_CHECKING
-static void set_error(
-        struct Pot_Instance * p_inst,
-        enum Pot_Err_Id       err,
-        bool                  override)
-{
-    if(p_inst){
-        if((override                          )
-        || (p_inst->err == k_Pot_Err_Id_None )){
-            p_inst->err = err;
-        }
-    }
-}
-
-static bool errored(
-        struct Pot_Instance * p_inst,
-        enum Pot_Err_Id       err )
-{
-    set_error(p_inst, err, NO_OVERRIDE);
-    return(err != k_Pot_Err_Id_None);
-}
-#endif /* CONFIG_FKMG_POT_RUNTIME_ERR OR_CHECKING */
 
 /* ************
  * Broadcasting
@@ -395,24 +329,6 @@ static void broadcast_instance_initialized(
     broadcast(&evt, &lsnr);
 }
 
-#if CONFIG_FKMG_POT_ALLOW_SHUTDOWN
-static void broadcast_interface_deinitialized(
-        struct Pot_Instance * p_inst,
-        Pot_Listener_Cb       cb)
-{
-    struct Pot_Evt evt = {
-            .sig = k_Pot_Instance_Deinitialized,
-            .data.inst_deinit.p_inst = p_inst
-    };
-
-    struct Pot_Listener lsnr = {
-        .p_inst = p_inst,
-        .cb = cb
-    };
-
-    broadcast(&evt, &lsnr);
-}
-#endif
 
 static void broadcast_pot_changed(
         struct Pot_Instance * p_inst,
@@ -452,28 +368,7 @@ static void add_listener_for_signal_to_listener_list(
     sys_slist_append(p_list, p_node);
 }
 
-#if CONFIG_FKMG_POT_ALLOW_LISTENER_REMOVAL
-static bool find_list_containing_listener_and_remove_listener(
-    struct Pot_Instance * p_inst,
-	struct Pot_Listener * p_lsnr)
-{
-    for(enum Pot_Evt_Sig sig = k_Pot_Evt_Sig_Beg;
-                         sig < k_Pot_Evt_Sig_End;
-                         sig++){
-        bool found_and_removed = sys_slist_find_and_remove(
-                &p_inst->list.listeners[sig], &p_lsnr->node);
-        if(found_and_removed) return(true);
-    }
-    return( false );
-}
-#endif
 
-// static bool signal_has_listeners(
-//         struct Pot_Instance * p_inst,
-//         enum Pot_Evt_Sig      sig)
-// {
-//     return(!sys_slist_is_empty(&p_inst->list.listeners[sig]));
-// }
 
 /* **************
  * Event Queueing
@@ -596,8 +491,6 @@ static uint16_t adc_convert_pot (struct Pot_Instance * p_inst, enum Pot_Id id)
 } 
 
 /* 
- * Pot Id is advanced in the argument at call for this fn. We only advance it here while we keep the current Pot Id intact for this cycle.
- * For the adc reading, the pot advancement occurs on timer expiry callback. 
  * POT_ADC_ADDRESS array contains all the information we need to set our muxes. First three bits (from LSB) tell us address pins to set on mux
  * while the second nybble tells us which mux to enable.
  * As it stands, Mux Address pins are on port B pins 0,1,2. Since these correspond directly to the bits of potAddress we're interested in, 
@@ -634,10 +527,8 @@ static void advance_adc_mux(enum Pot_Id id) {
 static uint16_t past_output[k_Pot_Id_Cnt] = {0};
 
 static uint16_t adc_filter_pot(struct Pot_Instance * p_inst, enum Pot_Id id, uint16_t val) {
-    // Coefficient for the EMA filter
+
     float alpha = 0.2f;
-    
-    // Threshold to determine significant change
     uint16_t threshold = 5;
 
     float newFilteredValue = past_output[id] + alpha * (val - past_output[id]);
@@ -661,7 +552,6 @@ static bool did_pot_change (struct Pot_Instance * p_inst, enum Pot_Id id, uint16
         p_inst->last_adc_read[id] = val;
         return true;
     }
-
     return false; 
 };
 
@@ -800,70 +690,24 @@ static void state_run_run(void * o)
             advance_adc_mux(next_pot(p_convert->id));
             
             uint16_t filtered_reading = adc_filter_pot(p_inst, p_convert->id, val);
-            // printk("%d\n", filtered_reading);
-            
-            // if (did_pot_change(p_inst, p_convert->id, filtered_reading)) {           
-            broadcast_pot_changed(p_inst, p_convert->id, filtered_reading);
-            // }
 
-
-            // }
+            if (did_pot_change(p_inst, p_convert->id, filtered_reading)) {           
+                broadcast_pot_changed(p_inst, p_convert->id, filtered_reading);
+            }
 
              break;
-        #if CONFIG_FKMG_POT_SHUTDOWN_ENABLED
-        case k_Pot_Evt_Sig_Instance_Deinitialized:
-            assert(false);
-            break;
-        #endif
     }
 }
-
-/* Deinit state responsibility is to clean up before exiting thread. */
-#if CONFIG_FKMG_POT_SHUTDOWN_ENABLED
-static void state_deinit_run(void * o)
-{
-    struct smf_ctx * p_sm = o;
-    struct Pot_Instance * p_inst = sm_ctx_to_instance(p_sm);
-
-    /* Get the event. */
-    struct Pot_SM_Evt * p_evt = &p_inst->sm_evt;
-
-    /* TODO */
-}
-#endif
 
 static const struct smf_state states[] = {
     /*                                      entry               run  exit */
     [  init] = SMF_CREATE_STATE(           NULL,   state_init_run, NULL),
     [   run] = SMF_CREATE_STATE(state_run_entry,    state_run_run, NULL),
-    #if CONFIG_FKMG_POT_SHUTDOWN_ENABLED
-    [deinit] = SMF_CREATE_STATE(           NULL, state_deinit_run, NULL),
-    #endif
 };
 
 /* ******
  * Thread
  * ******/
-
-#if CONFIG_FKMG_POT_ALLOW_SHUTDOWN
-/* Since there is only the "join" facility to know when a thread is shut down,
- * and that isn't appropriate to use since it will put the calling thread to
- * sleep until the other thread is shut down, we set up a delayable system work
- * queue event to check that the thread is shut down and then call any callback
- * that is waiting to be notified. */
-void on_thread_shutdown(struct k_work *item)
-{
-    struct Pot_Instance * p_inst =
-            CONTAINER_OF(item, struct Pot_Instance, work);
-
-    char * thread_state_str = "dead";
-    k_thread_state_str(&p_inst->thread, thread_state_str, sizeof(thread_state_str));
-    bool shut_down = strcmp( thread_state_str, "dead" ) == 0;
-
-    if(!shut_down) k_work_reschedule(&p_inst->work, K_MSEC(1));
-    else broadcast_instance_deinitialized(p_inst);
-}
-#endif
 
 static void thread(void * p_1, /* struct Pot_Instance* */
         void * p_2_unused, void * p_3_unused)
@@ -885,15 +729,6 @@ static void thread(void * p_1, /* struct Pot_Instance* */
         k_msgq_get(p_msgq, p_evt, K_FOREVER);
         run = smf_run_state(SMF_CTX(p_sm)) == 0;
     }
-
-    #if CONFIG_FKMG_POT_ALLOW_SHUTDOWN
-    /* We're shutting down. Schedule a work queue event to check that the
-     * thread exited and call back anything. */
-    if(should_callback_on_exit(p_inst)){
-        k_work_init_delayable( &p_inst->work, on_thread_shutdown);
-        k_work_schedule(&p_inst->work, K_MSEC(1));
-    }
-    #endif
 }
 
 static void start_thread(
@@ -929,14 +764,6 @@ void Pot_Init_Instance(struct Pot_Instance_Cfg * p_cfg)
     /* Get pointer to instance to configure. */
     struct Pot_Instance * p_inst = p_cfg->p_inst;
 
-    #if CONFIG_FKMG_POT_RUNTIME_ERROR_CHECKING
-    /* Check instance configuration for errors. */
-    if(errored(p_inst, check_instance_cfg_param_for_errors(p_cfg))){
-        assert(false);
-        return;
-    }
-    #endif
-
     init_adc_gpios(p_inst);
     init_adc_device(p_inst);
 
@@ -948,43 +775,14 @@ void Pot_Init_Instance(struct Pot_Instance_Cfg * p_cfg)
     q_init_instance_event(p_cfg);
 }
 
-#if CONFIG_FKMG_POT_ALLOW_SHUTDOWN
-void Pot_Deinit_Instance(struct Pot_Instance_Dcfg * p_dcfg)
-{
-    #error "Not implemented yet!"
-}
-#endif
 
 void Pot_Add_Listener(struct Pot_Listener_Cfg * p_cfg)
 {
-    #if CONFIG_FKMG_POT_RUNTIME_ERROR_CHECKING
-    /* Get pointer to instance. */
-    struct Pot_Instance * p_inst = p_cfg->p_inst;
-
-    /* Check listener instance configuration for errors. */
-    if(errored(p_inst, check_listener_cfg_param_for_errors(p_cfg))){
-        assert(false);
-        return;
-    }
-    #endif
-
     struct Pot_Listener * p_lsnr = p_cfg->p_lsnr;
     init_listener(p_lsnr);
     config_listener(p_lsnr, p_cfg);
     add_listener_for_signal_to_listener_list(p_cfg);
-
 }
-
-#if CONFIG_FKMG_POT_ALLOW_LISTENER_REMOVAL
-void Pot_Remove_Listener(struct Pot_Listener * p_lsnr)
-{
-    #error "Not implemented yet!"
-}
-#endif
-
-
-
-
 
 #if CONFIG_FKMG_POT_NO_OPTIMIZATIONS
 #pragma GCC pop_options
