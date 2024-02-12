@@ -1,4 +1,4 @@
-/* USQ_ZRTOS OVERLAY */
+/* USQ OVERLAY */
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/spi/spi.h>
