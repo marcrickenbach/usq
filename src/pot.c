@@ -135,6 +135,7 @@ static const uint8_t POT_ADC_ADDRESS[k_Pot_Id_Cnt] = {
     6   // Global 
 };
 
+
 /* *****************************************************************************
  * Private
  */
@@ -416,7 +417,7 @@ static void broadcast_interface_deinitialized(
 static void broadcast_pot_changed(
         struct Pot_Instance * p_inst,
         enum Pot_Id           id,
-        uint32_t              val)
+        uint16_t              val)
 {
 
     struct Pot_Evt evt = {
@@ -529,7 +530,7 @@ static void on_conversion_timer_expiry(struct k_timer * p_timer)
 /* Cause conversion event to occur immediately and then regularly after that. */
 static void start_conversion_timer(struct Pot_Instance * p_inst)
 {
-    #define CONVERSION_INITIAL_DURATION     K_NO_WAIT
+    #define CONVERSION_INITIAL_DURATION     K_MSEC(100)
     #define CONVERSION_AUTO_RELOAD_PERIOD   K_MSEC(1)
     k_timer_start(&p_inst->timer.conversion, CONVERSION_INITIAL_DURATION,
             CONVERSION_AUTO_RELOAD_PERIOD);
@@ -580,8 +581,6 @@ static uint16_t adc_convert_pot (struct Pot_Instance * p_inst, enum Pot_Id id)
 {   
     uint32_t val = 0; 
 
-    p_inst->last_adc_read[id] = p_inst->adc_current_reading[id]; 
-
     struct adc_sequence adc = {
         .channels = ADC_CHANNEL,
         .buffer = p_inst->adc_buffer,
@@ -607,8 +606,8 @@ static uint16_t adc_convert_pot (struct Pot_Instance * p_inst, enum Pot_Id id)
  */
 
 static void advance_adc_mux(enum Pot_Id id) {
-    // uint8_t potAddress = POT_ADC_ADDRESS[id];
-    uint8_t potAddress = 21;
+    uint8_t potAddress = POT_ADC_ADDRESS[id];
+    // uint8_t potAddress = 21;
     uint32_t bank = (potAddress >> 4) & 0x0F; // Extract the 4 MSBs for the bank address
     uint32_t addressBits = potAddress & 0x0F; // Extract the 4 LSBs for the mux channel address
 
@@ -649,21 +648,17 @@ static uint16_t adc_filter_pot(struct Pot_Instance * p_inst, enum Pot_Id id, uin
         past_output[id] = (uint16_t)newFilteredValue;
     }
 
-
     // Return the filtered value, which may or may not have been updated, depending on the threshold check
     return adc_lut[past_output[id]];
 }
 
-static uint16_t adc_change_buffer[k_Pot_Id_Cnt] = {0}; 
 
 static bool did_pot_change (struct Pot_Instance * p_inst, enum Pot_Id id, uint16_t val) 
 {
-    bool status = false; 
-
-    int16_t difference = abs(val - adc_change_buffer[id]);
+    int16_t difference = abs(val - p_inst->last_adc_read[id]);
     
-    if (difference >= 20) {
-        adc_change_buffer[id] = val;
+    if (difference > 40) {
+        p_inst->last_adc_read[id] = val;
         return true;
     }
 
@@ -675,7 +670,7 @@ static bool did_pot_change (struct Pot_Instance * p_inst, enum Pot_Id id, uint16
 static void populate_adc_pots_on_boot(struct Pot_Instance * p_inst) {
     for (int i = 0; i < k_Pot_Id_Cnt; i++) {
         past_output[i] = adc_convert_pot(p_inst, i);
-        adc_change_buffer[i] = past_output[i];
+        p_inst->last_adc_read[i] = past_output[i];
         advance_adc_mux(next_pot(i));
     }
 }
@@ -806,10 +801,13 @@ static void state_run_run(void * o)
             
             uint16_t filtered_reading = adc_filter_pot(p_inst, p_convert->id, val);
             // printk("%d\n", filtered_reading);
+            
+            // if (did_pot_change(p_inst, p_convert->id, filtered_reading)) {           
+            broadcast_pot_changed(p_inst, p_convert->id, filtered_reading);
+            // }
 
-            if (did_pot_change(p_inst, p_convert->id, filtered_reading)) {                    
-                broadcast_pot_changed(&p_inst, p_convert->id, filtered_reading); 
-            }
+
+            // }
 
              break;
         #if CONFIG_FKMG_POT_SHUTDOWN_ENABLED
