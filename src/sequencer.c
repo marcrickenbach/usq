@@ -170,6 +170,129 @@ static enum Sequencer_Step_Id next_step(struct Sequencer_Instance * p_inst, enum
     return((step + 1) % p_inst->seq.maxStep[id]);
 }
 
+/*********************************************************************
+ * NVS Storage
+ * Configure NVS submodule to store sequencer instance and mode data
+ ********************************************************************/
+
+
+enum Sequencer_Nvs_Key {
+    SEQ_ZERO,
+    SEQ_ARMED,
+    SEQ_OFFSET,
+    SEQ_MAX_STEP,
+    SEQ_MODE
+};
+
+
+
+static struct nvs_fs fs;
+
+#define NVS_PARTITION		storage_partition
+#define NVS_PARTITION_DEVICE	FIXED_PARTITION_DEVICE(NVS_PARTITION)
+#define NVS_PARTITION_OFFSET	FIXED_PARTITION_OFFSET(NVS_PARTITION)
+
+static void nvs_init(void)
+{
+	int rc = 0, cnt = 0, cnt_his = 0;
+    uint16_t steps; 
+    uint8_t mode; 
+
+	struct flash_pages_info info;
+
+	/* define the nvs file system by settings with:
+	 *	sector_size equal to the pagesize,
+	 *	3 sectors
+	 *	starting at NVS_PARTITION_OFFSET
+	 */
+	fs.flash_device = NVS_PARTITION_DEVICE;
+	if (!device_is_ready(fs.flash_device)) {
+		LOG_ERR("Flash device %s is not ready\n", fs.flash_device->name);
+		return;
+	}
+	fs.offset = NVS_PARTITION_OFFSET;
+	rc = flash_get_page_info_by_offs(fs.flash_device, fs.offset, &info);
+	if (rc) {
+		LOG_ERR("Unable to get page info\n");
+		return;
+	}
+	fs.sector_size = info.size;
+	fs.sector_count = 3U;
+
+	rc = nvs_mount(&fs);
+	if (rc) {
+		LOG_ERR("Flash Init failed\n");
+		return;
+	}
+}
+
+static void fetch_nvs_data(struct Sequencer_Instance * p_inst)
+{
+    int rc = 0; 
+    bool active[16];
+    uint8_t offset;
+    uint8_t max_step[2];
+    uint8_t mode;
+
+    rc = nvs_read(&fs, SEQ_ARMED, &active, sizeof(active));
+    if (rc < 0) {
+        LOG_ERR("No data found in NVS for armed sequencers. Setting all to true.");
+        for (int i = 0; i < 16; i++) {
+            p_inst->seq.active[i] = true;
+        }
+    } else {
+        for (int i = 0; i < 16; i++) {
+            p_inst->seq.active[i] = active[i];
+        }
+    }
+
+    rc = nvs_read(&fs, SEQ_OFFSET, &offset, sizeof(offset));
+    if (rc < 0) {
+        LOG_ERR("No data found in NVS for offset. Setting to 8.");
+        p_inst->seq.offset = 8;
+    } else {
+        p_inst->seq.offset = offset; 
+    }
+
+    rc = nvs_read(&fs, SEQ_MAX_STEP, &max_step, sizeof(max_step));
+    if (rc < 0) {
+        LOG_ERR("No data found in NVS for max step. Setting to 8.");
+        for (int i = 0; i < 2; i++) {
+            p_inst->seq.maxStep[i] = 8;
+        }
+    } else {
+        for (int i = 0; i < 2; i++) {
+            p_inst->seq.maxStep[i] = max_step[i];
+        }
+    }
+
+    rc = nvs_read(&fs, SEQ_MODE, &mode, sizeof(mode));
+    if (rc < 0) {
+        LOG_ERR("No data found in NVS for mode. Setting to 0.");
+        p_inst->seq.mode = 0;
+    } else {
+        p_inst->seq.mode = mode; 
+    }
+}
+
+
+static int write_nvs_data(struct Sequencer_Instance * p_inst, 
+                            enum Sequencer_Nvs_Key key,
+                            void * data)
+{
+    int rc = 0; 
+    rc = nvs_write(&fs, key, &data, sizeof(data));
+    if (rc < 0) {
+        LOG_ERR("Error: Failed to write %d value to NVS", key);
+    }
+}
+
+
+/*****************
+ * Timer Functions
+/*****************/
+
+
 static void reset_timer(struct Sequencer_Instance * p_inst, 
                         enum Sequencer_Id id, 
                         int time_in_ms) {
@@ -211,7 +334,6 @@ static uint16_t calculate_gate_timer_delay(struct Sequencer_Instance * p_inst, e
         delay_val = p_inst->seq.time[next_step(p_inst, id)]; 
         delay_val = delay_val >> 1; 
         p_inst->seq.delay_buffer[id] = delay_val; 
-
         return delay_val; 
     } 
     

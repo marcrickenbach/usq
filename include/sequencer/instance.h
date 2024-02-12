@@ -99,6 +99,7 @@ struct Sequencer_Instance{
         bool edge[2]; 
         uint16_t global; 
         uint8_t offset; 
+        uint8_t mode; 
         bool running[2];
     }seq; 
 
