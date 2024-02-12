@@ -71,14 +71,9 @@
 	/delete-property/ hse-bypass;
 };
 
+
+/* Highest possible values to get a precise 48MHz clock for the USB on PLLQ. We could get the clock to 180MHz if we could derive the USB clock from the PLLSAIP, but Zephyr doesn't yet support this. If we need these extra MHz revisit this, for now probably ok. */
 &pll {
-    /* FIXME: Former values. The values below are the highest possible values to get a precise 48MHz clock for the USB on PLLQ. We could get the clock to 180MHz if we could derive the USB clock from the PLLSAIP, but Zephyr doesn't yet support this. If we need these extra MHz revisit this, for now probably ok. */
-	// div-m = <4>;
-	// mul-n = <180>;
-	// div-p = <2>;
-	// div-q = <8>;
-	// clocks = <&clk_hse>;
-	// status = "okay";
     div-m = <8>;
 	mul-n = <336>;
 	div-p = <2>;
