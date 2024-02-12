@@ -75,11 +75,11 @@
 /* Highest possible values to get a precise 48MHz clock for the USB on PLLQ. We could get the clock to 180MHz if we could derive the USB clock from the PLLSAIP, but Zephyr doesn't yet support this. If we need these extra MHz revisit this, for now probably ok. */
 &pll {
     div-m = <8>;
-	mul-n = <336>;
-	div-p = <2>;
-	div-q = <7>;
-	clocks = <&clk_hse>;
-	status = "okay";
+    mul-n = <336>;
+    div-p = <2>;
+    div-q = <7>;
+    clocks = <&clk_hse>;
+    status = "okay";
 };
 
 
