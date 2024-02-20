@@ -66,6 +66,17 @@
         "usbd.h": "c",
         "clock_control.h": "c",
         "slist.h": "c",
-        "future": "c"
+        "future": "c",
+        "flash.h": "c",
+        "nvs.h": "c",
+        "usb_audio.h": "c",
+        "msos_desc.h": "c",
+        "__config": "c",
+        "iterator": "c",
+        "algorithm": "c",
+        "numeric": "c",
+        "time.h": "c",
+        "flash_map.h": "c",
+        "stdlib.h": "c"
     },
 }

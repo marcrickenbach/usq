@@ -1,72 +1,66 @@
-// {
-//     "version": "0.2.0",
-//     "configurations": [
-//         {
-//             /* When debugging inside container, run standalone Segger JLink GDB
-//              * Server on the host (e.g. JLinkGDBServer), listening on the
-//              * default ports (2331, 2332, 2333), configure it for the processor
-//              * used, speed, etc. Setting "servertype" to "external" and
-//              * "gdbTarget" to the host port to connect to configures
-//              * cortex-debug plugin to connect to the gdb server on the host.
-//              * Unfortunately cortex-debug assumes the host is openocd, so it
-//              * uses incorrect commands be default, which we'll correct by
-//              * overriding. */
-//             "name": "usq",
-//             "type": "cortex-debug",
-//             "request": "launch",
-//             "cwd": "${workspaceFolder}",
-//             "device": "STM32F446RE",
-//             "executable": "${workspaceFolder}/build/zephyr/zephyr.elf",
-//             "servertype": "external",
-//             // "gdbTarget": "host.docker.internal:2331", // This should be whatever JLink prints as tcp/ip port
-//             "gdbTarget": "localhost:2331",
-//             "armToolchainPath": "/Users/marcrickenbach/zephyr-sdk-0.16.1/arm-zephyr-eabi/bin",
-//             "toolchainPrefix": "arm-zephyr-eabi",
-//             //"showDevDebugOutput": "raw",
-//             "preLaunchCommands": [
-//                 "set mem inaccessible-by-default off"
-//             ],
-//             "overrideLaunchCommands": [
-// 				/* Reset and halt the target CPU. */
-// 				"monitor halt",
-// 				"monitor reset",
-// 				"load ${workspaceFolder}/build/zephyr/zephyr.elf",
-// 				"monitor reset",
-// 			],
-//             // "postLaunchCommands": [
-//             //     "monitor reset",
-//             //     "continue"
-//             // ],
-//             "runToEntryPoint": "main",
-// 			//"breakAfterReset": false,f
-//             // "svdFile": "${workspaceFolder:project}/boards/imxrt1062.svd",
-//             // NOTE: comment out "rtos" when debugging prior to OS running
-//             // because it seems to cause VSCode to disconnect from the debugger
-//             // and act strange.
-//             // "rtos": "Zephyr",
-//             /* Only necessary if accessing rtt from within vscode, which doesn't
-//              * seem possible in devcontainer since it doesn't expose the devices
-//              * to do that. However, it's still possible to connect to rtt from
-//              * host (i.e. wherever JLinkGDBServer is running). For example can
-//              * run JLinkRTTViewer on the host and connect. */
-//             //"rttConfig": {
-//             //    "enabled": true,
-//             //    "address": "auto",
-//             //    "decoders": [
-//             //        {
-//             //            "label": "",
-//             //            "port": 0,
-//             //            "type": "console"
-//             //        }
-//             //    ]
-//             //}
-//         },
-//     ]
-// }
-
 {
     "version": "0.2.0",
     "configurations": [
+        {
+            /* When debugging inside container, run standalone Segger JLink GDB
+             * Server on the host (e.g. JLinkGDBServer), listening on the
+             * default ports (2331, 2332, 2333), configure it for the processor
+             * used, speed, etc. Setting "servertype" to "external" and
+             * "gdbTarget" to the host port to connect to configures
+             * cortex-debug plugin to connect to the gdb server on the host.
+             * Unfortunately cortex-debug assumes the host is openocd, so it
+             * uses incorrect commands be default, which we'll correct by
+             * overriding. */
+            "name": "usq",
+            "type": "cortex-debug",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "device": "STM32F446RE",
+            "executable": "${workspaceFolder}/build/zephyr/zephyr.elf",
+            "servertype": "external",
+            // "gdbTarget": "host.docker.internal:2331", // This should be whatever JLink prints as tcp/ip port
+            "gdbTarget": "localhost:2331",
+            "armToolchainPath": "/Users/marcrickenbach/zephyr-sdk-0.16.1/arm-zephyr-eabi/bin",
+            "toolchainPrefix": "arm-zephyr-eabi",
+            //"showDevDebugOutput": "raw",
+            "preLaunchCommands": [
+                "set mem inaccessible-by-default off"
+            ],
+            "overrideLaunchCommands": [
+				/* Reset and halt the target CPU. */
+				"monitor halt",
+				"monitor reset",
+				"load ${workspaceFolder}/build/zephyr/zephyr.elf",
+				"monitor reset",
+			],
+            // "postLaunchCommands": [
+            //     "monitor reset",
+            //     "continue"
+            // ],
+            "runToEntryPoint": "main",
+			//"breakAfterReset": false,f
+            // "svdFile": "${workspaceFolder:project}/boards/imxrt1062.svd",
+            // NOTE: comment out "rtos" when debugging prior to OS running
+            // because it seems to cause VSCode to disconnect from the debugger
+            // and act strange.
+            // "rtos": "Zephyr",
+            /* Only necessary if accessing rtt from within vscode, which doesn't
+             * seem possible in devcontainer since it doesn't expose the devices
+             * to do that. However, it's still possible to connect to rtt from
+             * host (i.e. wherever JLinkGDBServer is running). For example can
+             * run JLinkRTTViewer on the host and connect. */
+            //"rttConfig": {
+            //    "enabled": true,
+            //    "address": "auto",
+            //    "decoders": [
+            //        {
+            //            "label": "",
+            //            "port": 0,
+            //            "type": "console"
+            //        }
+            //    ]
+            //}
+        },
         {
             "name": "Debug on Nucleo-446RE",
             "type": "cppdbg",
@@ -98,6 +92,22 @@
                 "traceResponse": true
             }
             
+        },
+        {
+            "name": "Cortex Debug",
+            "cwd": "${workspaceRoot}",
+            "executable": "${workspaceRoot}/build/zephyr/zephyr.elf",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "stlink", // or "jlink", "openocd" depending on your probe
+            "device": "STM32F446RE", // Specify your device here
+            "svdFile": "${workspaceRoot}/STM32F446.svd", // Path to the SVD file
+            "interface": "swd",
+            "showDevDebugOutput": "raw",
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 4
+            }
         }
     ]
 }

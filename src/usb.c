@@ -24,7 +24,13 @@
 #include "usb/private/module_data.h"
 
 #include <zephyr/usb/usb_device.h>
-#include <zephyr/usb/usbd.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/usb/bos.h>
+#include <zephyr/usb/msos_desc.h>
+
+#include "webusb.h"
+
+
 
 /* *****************************************************************************
  * Constants, Defines, and Macros
@@ -392,16 +398,17 @@ static void q_init_instance_event(struct USB_Instance_Cfg * p_cfg)
 
 static void init_usb_device(struct USB_Instance * p_inst)
 {
+    /* Disable VBUS Sensing */
+    USB_OTG_FS->GCCFG &= ~(1U<<21);
+    
     int ret = usb_enable(NULL);
     if(ret != 0) {
         LOG_ERR("Failed to enable USB device (err: %d)", ret);
         return; 
     } else {
         LOG_INF("USB device enabled");
-    
     }
 }
-
 
 
 

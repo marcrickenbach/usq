@@ -298,8 +298,6 @@ static void on_button_press (struct Button_Evt *p_evt)
 
    int main (void) {
 
-    USB_OTG_FS->GCCFG &= ~(1U<<21);
-
      /* Instance: LED Driver */
     struct LED_Driver_Instance_Cfg led_driver_inst_cfg = {
         .p_inst = &led_driver_inst,

@@ -65,6 +65,16 @@
 
 /**************************************/
 
+
+// &flash0 {
+//     usq_storage_partition: partition@C000 {
+//         label = "nvs_storage";
+//         reg = <0x0 0x0800C000 DT_SIZE_K(80)>;
+//     };
+// };
+
+
+
 &clk_hse {
 	/delete-property/ hse-bypass;
 };
@@ -156,11 +166,11 @@
     status = "disabled";
 };
 
+
 &usbotg_fs {
     compatible = "st,stm32-otgfs"; 
     pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
     pinctrl-names = "default";
-    // vbus-gpios = < &label >;
     status = "okay"; 
 };
 
