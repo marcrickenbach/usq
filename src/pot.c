@@ -438,8 +438,6 @@ static void init_adc_device (struct Pot_Instance * p_inst) {
         LOG_ERR("ADC Configuration: Device Is NOT Ready.");
         return; 
     } else {
-        // LOG_INF("ADC Device is READY"); 
-
         struct adc_channel_cfg adc_config = {
             .channel_id = ADC_CHANNEL,
             .gain = ADC_GAIN,
@@ -450,8 +448,6 @@ static void init_adc_device (struct Pot_Instance * p_inst) {
         if (adc_channel_setup(adc_dev, &adc_config) != 0) {
             LOG_ERR("ADC Device set up: Failed");
             return; 
-        } else {
-            // LOG_INF("ADC Device set up: PASSED");
         }
     }
 
