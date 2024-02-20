@@ -931,24 +931,17 @@ static void set_gate_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
 }
 
 
-static void advance_sequencer_step(struct Sequencer_Instance * p_inst, enum Sequencer_Id id) 
-{
+static void advance_sequencer_step(struct Sequencer_Instance *p_inst, enum Sequencer_Id id) {
+
     if (p_inst->seq.maxStep[id] == 0) return;
 
-    uint8_t next_step;
-    if (p_inst->seq.global > 5) {
-        if (randInRange(0, 100) < p_inst->seq.global) {
-            next_step = randInRange(0, p_inst->seq.maxStep[id]-1);
-            p_inst->seq.step[id] = next_step; 
-        } else {
-            next_step = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
-            p_inst->seq.step[id] = next_step; 
-        }
+    if (p_inst->seq.global > 5 && randInRange(0, 100) < p_inst->seq.global) {
+        p_inst->seq.step[id] = randInRange(0, p_inst->seq.maxStep[id] - 1);
     } else {
-        next_step = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
-        p_inst->seq.step[id] = next_step; 
+        p_inst->seq.step[id] = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
     }
 }
+
 
 
 /* *******************
