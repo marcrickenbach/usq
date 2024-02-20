@@ -10,6 +10,9 @@
  * Includes
  */
 
+#include <stdlib.h>
+#include <time.h> 
+
 #include "sequencer.h"
 
 #include <zephyr/kernel.h>
@@ -42,6 +45,8 @@
 #include "uart.h"
 #include "uart/evt.h"
 
+
+
 /* *****************************************************************************
  * Constants, Defines, and Macros
  */
@@ -63,7 +68,7 @@
 #define TRANSPORT_PINS      DT_PATH(zephyr_user)
 
 // Delay Coefficient for Testing
-#define TEST_DELAY_TIME         120
+#define TEST_DELAY_TIME         10
 
 #define GPIO_PINS           DT_PATH(zephyr_user)
 
@@ -173,112 +178,80 @@ static enum Sequencer_Step_Id next_step(struct Sequencer_Instance * p_inst, enum
 /*********************************************************************
  * NVS Storage
  * Configure NVS submodule to store sequencer instance and mode data
+ * FIXME: It seems that the NVS module isn't entirely compatible with STM32F4 series. 
+ * This has to do with the way in which the flash is mapped out in sectors. The API needs
+ * to use two sectors and they both either need to be 16kB blocks or possibly 64kB, but not
+ * 128kB. In the case of the F4 mcu, the first available flash is mapped as 64kB but the subsequent
+ * block is 128kB. This is a problem because the NVS API doesn't allow for the use of two different
+ * block sizes. In thd documentation/github, it seems like this is a known issue and an old one at that
+ * but I haven't yet found a solution. 
  ********************************************************************/
 
+#define FLASH_REG_BASE      0x40023C00
+#define FLASH_KEYR          (*((volatile uint32_t *)(FLASH_REG_BASE + 0x04)))
+#define FLASH_CR            (*((volatile uint32_t *)(FLASH_REG_BASE + 0x10)))
+#define FLASH_SR            (*((volatile uint32_t *)(FLASH_REG_BASE + 0x0C)))
+#define FLASH_UNLOCK_KEY1   0x45670123
+#define FLASH_UNLOCK_KEY2   0xCDEF89AB
 
-enum Sequencer_Nvs_Key {
-    SEQ_ZERO,
-    SEQ_ARMED,
-    SEQ_OFFSET,
-    SEQ_MAX_STEP,
-    SEQ_MODE
-};
+#define FLASH_TIMEOUT_VALUE 50000
 
-static struct nvs_fs fs;
-
-#define NVS_PARTITION		    storage_partition
-#define NVS_PARTITION_DEVICE	FIXED_PARTITION_DEVICE(NVS_PARTITION)
-#define NVS_PARTITION_OFFSET	FIXED_PARTITION_OFFSET(NVS_PARTITION)
-
-static void nvs_init(void)
-{
-    int rc = 0, cnt = 0, cnt_his = 0;
-    
-    struct flash_pages_info info;
-    
-    /* define the nvs file system by settings with: sector_size equal to the pagesize, 3 sectors starting at NVS_PARTITION_OFFSET */
-    fs.flash_device = NVS_PARTITION_DEVICE;
-    if (!device_is_ready(fs.flash_device)) {
-        LOG_ERR("Flash device %s is not ready\n", fs.flash_device->name);
-        return;
+static int unlock_flash(void) {
+    if (FLASH->CR & FLASH_CR_LOCK) {
+        FLASH->KEYR = FLASH_UNLOCK_KEY1;
+        FLASH->KEYR = FLASH_UNLOCK_KEY2;
     }
-    
-    fs.offset = NVS_PARTITION_OFFSET;
-    rc = flash_get_page_info_by_offs(fs.flash_device, fs.offset, &info);
-    if (rc) {
-        LOG_ERR("Unable to get page info\n");
-        return;
+
+    if (FLASH_CR & FLASH_CR_LOCK) {
+        LOG_ERR("Error: Flash is still locked");
+        return -1; // Error: Flash is still locked
     }
-    fs.sector_size = info.size;
-    fs.sector_count = 3U;
-    
-    rc = nvs_mount(&fs);
-    if (rc) {
-        LOG_ERR("Flash Init failed\n");
-        return;
-    }
+
+    return 0; 
 }
 
-static void fetch_nvs_data(struct Sequencer_Instance * p_inst)
-{
-    int rc = 0; 
-    bool active[16];
-    uint8_t offset;
-    uint8_t max_step[2];
-    uint8_t mode;
-    
-    rc = nvs_read(&fs, SEQ_ARMED, &active, sizeof(active));
-    if (rc < 0) {
-        LOG_ERR("No data found in NVS for armed sequencers. Setting all to true.");
-        for (int i = 0; i < 16; i++) {
+static int lock_flash() {
+    FLASH->CR |= FLASH_CR_LOCK;
+
+    if (!(FLASH->CR & FLASH_CR_LOCK)) {
+        LOG_ERR("Error: Flash is still unlocked");
+        return -1;
+    }
+
+    return 0; 
+}
+
+#define FLASH_BASE_SECTOR4   0x08010000
+#define SEQ_INIT_FLAG_VALUE  44203
+#define SEQ_INIT_FLAG_ADDR   (FLASH_BASE_SECTOR4 + 0x0)  // 0x08010000
+#define SEQ_ARMED_ADDR       (FLASH_BASE_SECTOR4 + 0x4)  // 0x08010004
+#define SEQ_OFFSET_ADDR      (FLASH_BASE_SECTOR4 + 0x8)  // 0x08010008
+#define SEQ_MAX_STEP_ADDR    (FLASH_BASE_SECTOR4 + 0xC)  // 0x0801000C
+#define SEQ_MODE_ADDR        (FLASH_BASE_SECTOR4 + 0x10) // 0x08010010
+
+
+
+static void load_last_settings_on_load(struct Sequencer_Instance * p_inst)
+{   
+    uint32_t offset = read_flash(SEQ_OFFSET_ADDR);
+    p_inst->seq.offset = offset & 0xFF;
+
+    uint32_t maxStep = read_flash(SEQ_MAX_STEP_ADDR);
+    p_inst->seq.maxStep[0] = maxStep & 0xFF;
+    p_inst->seq.maxStep[1] = (maxStep >> 8) & 0xFF;
+
+    uint32_t armed = read_flash(SEQ_ARMED_ADDR);
+    for (int i = 0; i < 16; i++) {
+        if (armed & (1 << i)) {
             p_inst->seq.active[i] = true;
-        }
-    } else {
-        for (int i = 0; i < 16; i++) {
-            p_inst->seq.active[i] = active[i];
+        } else {
+            p_inst->seq.active[i] = false;
         }
     }
-    
-    rc = nvs_read(&fs, SEQ_OFFSET, &offset, sizeof(offset));
-    if (rc < 0) {
-        LOG_ERR("No data found in NVS for offset. Setting to 8.");
-        p_inst->seq.offset = 8;
-    } else {
-        p_inst->seq.offset = offset; 
-    }
-    
-    rc = nvs_read(&fs, SEQ_MAX_STEP, &max_step, sizeof(max_step));
-    if (rc < 0) {
-        LOG_ERR("No data found in NVS for max step. Setting to 8.");
-        for (int i = 0; i < 2; i++) {
-            p_inst->seq.maxStep[i] = 8;
-        }
-    } else {
-        for (int i = 0; i < 2; i++) {
-            p_inst->seq.maxStep[i] = max_step[i];
-        }
-    }
-    
-    rc = nvs_read(&fs, SEQ_MODE, &mode, sizeof(mode));
-    if (rc < 0) {
-        LOG_ERR("No data found in NVS for mode. Setting to 0.");
-        p_inst->seq.mode = 0;
-    } else {
-        p_inst->seq.mode = mode; 
-    }
+    p_inst->seq.mode = read_flash(SEQ_MODE_ADDR);
 }
 
 
-static int write_nvs_data(struct Sequencer_Instance * p_inst, 
-                            enum Sequencer_Nvs_Key key,
-                            void * data)
-{
-    int rc = 0; 
-    rc = nvs_write(&fs, key, &data, sizeof(data));
-    if (rc < 0) {
-        LOG_ERR("Error: Failed to write %d value to NVS", key);
-    }
-}
 
 
 /*****************
@@ -324,7 +297,7 @@ static uint16_t calculate_gate_timer_delay(struct Sequencer_Instance * p_inst, e
     uint16_t delay_val; 
 
     if (edge) {
-        delay_val = p_inst->seq.time[next_step(p_inst, id)]; 
+        delay_val = p_inst->seq.time[next_step(p_inst, id) + (id * p_inst->seq.offset)]; 
         delay_val = delay_val >> 1; 
         p_inst->seq.delay_buffer[id] = delay_val; 
         return delay_val; 
@@ -612,13 +585,23 @@ static void init_gate_gpios(struct Sequencer_Instance * p_inst)
  * Initial Value Configs
  * ************************/
 
-/* FIXME: Testing Only. Replace with an initial ADC read routine*/
+
+/* 
+ * FIXME: Testing Only. Replace with an initial ADC read routine */
+
+
 
 static void config_initial_voltages(struct Sequencer_Instance * p_inst)
 {
+
     for (int i = 0; i < ARRAY_SIZE(p_inst->seq.voltage); ++i)
     {
-        p_inst->seq.voltage[i] = 0 + (i * 500);
+        p_inst->seq.voltage[i] = 0; //+ (i * 500);
+    }
+
+    for (int k=1; k < 3; k++) 
+    {
+        dac_write_new_value(k, 0); 
     }
 }
 
@@ -841,11 +824,19 @@ static void timer_y_callback (const struct device *timer_dev,
  * Potentiometer Update Functions
  * ********************************/
 
+static inline long map_val(long x, long in_min, long in_max, long out_min, long out_max) {
+    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+int randInRange(int min, int max) {
+    return min + (rand() % (max - min + 1));
+}
+
 static void post_updated_pot_value(struct Sequencer_Instance * p_inst, enum Pot_Id id, uint16_t val) 
 {
     if (id < 16) {
         p_inst->seq.voltage[id] = val; 
-    } else if (id > 16 && id < 32) {
+    } else if (id >= 16 && id < 32) {
         p_inst->seq.time[ id - 16 ] = val; 
     } else {
         switch(id) {
@@ -854,8 +845,9 @@ static void post_updated_pot_value(struct Sequencer_Instance * p_inst, enum Pot_
             case 33:
                 p_inst->seq.param[ id - 32 ] = val; 
                 break; 
-            case 34: 
-                p_inst->seq.global = val; 
+            case 34:
+                int global_val = map_val(val, 0, 4095, 0, 100);
+                p_inst->seq.global = global_val; 
                 break; 
         }
     }
@@ -925,7 +917,7 @@ static void set_voltage_on_step(struct Sequencer_Instance * p_inst, enum Sequenc
 {
     uint8_t channel = id + 1;
 
-    dac_write_new_value(channel, p_inst->seq.voltage[p_inst->seq.step[id]]); 
+    dac_write_new_value(channel, p_inst->seq.voltage[p_inst->seq.step[id] + (id * p_inst->seq.offset)]); 
 
 }
 
@@ -943,9 +935,19 @@ static void advance_sequencer_step(struct Sequencer_Instance * p_inst, enum Sequ
 {
     if (p_inst->seq.maxStep[id] == 0) return;
 
-    uint8_t next_step = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
-
-    p_inst->seq.step[id] = next_step; 
+    uint8_t next_step;
+    if (p_inst->seq.global > 5) {
+        if (randInRange(0, 100) < p_inst->seq.global) {
+            next_step = randInRange(0, p_inst->seq.maxStep[id]-1);
+            p_inst->seq.step[id] = next_step; 
+        } else {
+            next_step = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
+            p_inst->seq.step[id] = next_step; 
+        }
+    } else {
+        next_step = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
+        p_inst->seq.step[id] = next_step; 
+    }
 }
 
 
@@ -1161,6 +1163,9 @@ static void state_init_run(void * o)
      * Sequencer_Init_Instance()), now finish the job. Since this is an
      * Init_Instance event the data contains the intance cfg. */
     struct Sequencer_SM_Evt_Sig_Init_Instance * p_ii = &p_evt->data.init_inst;
+
+    time_t t; 
+    srand(11141984);
 
     config_instance_deferred(p_inst, &p_ii->cfg);
     broadcast_instance_initialized(p_inst, p_ii->cfg.cb);  
