@@ -297,7 +297,11 @@ static uint16_t calculate_gate_timer_delay(struct Sequencer_Instance * p_inst, e
     uint16_t delay_val; 
 
     if (edge) {
-        delay_val = p_inst->seq.time[next_step(p_inst, id) + (id * p_inst->seq.offset)]; 
+        delay_val = p_inst->seq.time[next_step(p_inst, id) + (id * p_inst->seq.offset)];
+
+        /* Scale timing according to each channel slider */
+        delay_val = delay_val * (p_inst->seq.param[id] / 100);
+
         delay_val = delay_val >> 1; 
         p_inst->seq.delay_buffer[id] = delay_val; 
         return delay_val; 
@@ -843,7 +847,8 @@ static void post_updated_pot_value(struct Sequencer_Instance * p_inst, enum Pot_
             default: break; 
             case 32:
             case 33:
-                p_inst->seq.param[ id - 32 ] = val; 
+                int seq_param = map_val(val, 0, 4095, 100, 0);
+                p_inst->seq.param[ id - 32 ] = (float)(seq_param); 
                 break; 
             case 34:
                 int global_val = map_val(val, 0, 4095, 0, 100);
@@ -1158,7 +1163,7 @@ static void state_init_run(void * o)
     struct Sequencer_SM_Evt_Sig_Init_Instance * p_ii = &p_evt->data.init_inst;
 
     time_t t; 
-    srand(11141984);
+    srand(1114198411131987);
 
     config_instance_deferred(p_inst, &p_ii->cfg);
     broadcast_instance_initialized(p_inst, p_ii->cfg.cb);  
