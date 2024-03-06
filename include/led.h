@@ -49,6 +49,7 @@ enum LED_STATE {
     LED_DISARM,     // 0
     LED_ARM,        // 1
     LED_STEP,       // 2
+    LED_MODE        // 3
 };
 
 

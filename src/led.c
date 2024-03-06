@@ -880,19 +880,18 @@ void clear_leds() {
     pack_and_write_led_data();
 }
 
-
 void set_led_full_brightness(int led_number) {
     clear_leds();
     led_buffer[led_number] = QUARTER_BRIGHTNESS;
     pack_and_write_led_data();
 }
 
-
 void set_initial_armed_leds(void) {
     for (int i = 0; i < 16; i++) {
         led_armed[i] = true;
     }
 }
+
 
 void update_leds(bool channel, 
                  uint8_t step, 
@@ -901,15 +900,16 @@ void update_leds(bool channel,
                  enum LED_STATE state,
                  uint8_t active)
 {
-    if (state != LED_STEP) {
+    if (state == LED_ARM || state == LED_DISARM) {
         buffer_armed_steps_leds(channel, step, offset, state);
         led_buffer[ led_to_out_map[(channel * offset) + active] ] = EIGHTH_BRIGHTNESS;  
-    } else {
+    } else if (state == LED_STEP){
         buffer_armed_steps_leds(channel, step, offset, state);
         led_buffer[ led_to_out_map[(channel * offset) + step] ] = value;    
+    } else if (state == LED_MODE) {
+        memset(led_buffer, 0, sizeof(led_buffer));
+        led_buffer[ led_to_out_map[step] ] = value; 
     }
-
-    /* Map the LED number to the output channel. Channel is a bool value as there are only two possibilities here. If we are on channel 1 we need to take into account the step offset (i.e. where the second channel begins). Once we know which LED corresponds to the step we're trying to light up, we can redefine our index properly. Update value given in argument */
 
     /* Since the LED Driver maps 12-bit values into 8-bit packages, we need to write two LED channels over 3 bytes (24 bits total). These values are set to account this property of the driver and keeps track of where channel 0 and channel 1 begin and end in this 24 byte schema. */
     int byte_offset = (offset * 3) / 2;

@@ -425,7 +425,7 @@ static void on_conversion_timer_expiry(struct k_timer * p_timer)
 /* Cause conversion event to occur immediately and then regularly after that. */
 static void start_conversion_timer(struct Pot_Instance * p_inst)
 {
-    #define CONVERSION_INITIAL_DURATION     K_MSEC(100)
+    #define CONVERSION_INITIAL_DURATION     K_MSEC(250)
     #define CONVERSION_AUTO_RELOAD_PERIOD   K_MSEC(1)
     k_timer_start(&p_inst->timer.conversion, CONVERSION_INITIAL_DURATION,
             CONVERSION_AUTO_RELOAD_PERIOD);

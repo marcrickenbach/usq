@@ -40,6 +40,7 @@
 #include "usb/private/sm_evt.h"
 
 
+
 /* *****************************************************************************
  * Defines
  */
@@ -133,6 +134,7 @@ K_MSGQ_DEFINE(usb_sm_evt_q, sizeof(struct USB_SM_Evt),
         MAX_QUEUED_USB_SM_EVTS, USB_SM_QUEUE_ALIGNMENT);
 static struct USB_Instance usb_inst;
 
+
 /* *****************************************************************************
  * Listeners
  */
@@ -140,6 +142,7 @@ static struct USB_Instance usb_inst;
 #if 0
 static struct Pot_Listener midi_rcvd_listener;
 #endif
+
 
 /* *****************************************************************************
  * Kernel Events
@@ -211,7 +214,6 @@ static void on_usb_instance_initialized(struct USB_Evt *p_evt)
 	k_event_post(&events, EVT_FLAG_INSTANCE_INITIALIZED);
 }
 
-
 static void wait_on_instance_initialized(void)
 {
 	uint32_t events_rcvd = k_event_wait(&events, EVT_FLAG_INSTANCE_INITIALIZED,
@@ -220,10 +222,13 @@ static void wait_on_instance_initialized(void)
 }
 
 
-  
+/* *****************************************************************************
+ * Listener Events
+ */
+
 
 /* ********************
- * ON POT CHANGE
+ * On Pot Change
  * ********************/
 
 static void on_pot_changed(struct Pot_Evt *p_evt)
@@ -241,14 +246,12 @@ static void on_pot_changed(struct Pot_Evt *p_evt)
 }
 
 
-/* ********************
- * ON LED READY TO WRITE
- * ********************/
+/* ***********************
+ * On LED Ready to Write
+ * ***********************/
 static void on_led_write_ready(struct LED_Driver_Evt *p_evt) 
 {
     assert(p_evt->sig == k_Seq_Evt_Sig_Reset_LED);
-
-    // struct LED_Driver_SM_Evt_Sig_LED_Driver_Write * p_write = (struct LED_Driver_SM_Evt_Sig_LED_Driver_Write *) &p_evt->data.write;
 
     struct LED_Driver_SM_Evt evt = {
             .sig = k_LED_Driver_SM_Evt_LED_Driver_Reset_LED,
@@ -263,31 +266,53 @@ static void on_led_write_ready(struct LED_Driver_Evt *p_evt)
 
 
 /* ********************
- * ON BUTTON PRESS 
+ * On Button Press 
  * ********************/
+
+#define SEQ_STATE_MODE_SEL  2
 
 static void on_button_press (struct Button_Evt *p_evt) 
 {
     assert(p_evt->sig == k_Button_Evt_Sig_Pressed);
     struct Sequencer_Instance * p_inst = &sequencer_inst;
 
-    // Toggle the active state of the button in the sequencer instance
-    p_inst->seq.active[p_evt->data.pressed.btn_id] = !p_inst->seq.active[p_evt->data.pressed.btn_id];
-    
-    // calculate the channel which we can do by checking if the button value is less than the offset. If it is less than it is 0, otherwise 1. 
-    int ch = p_evt->data.pressed.btn_id < p_inst->seq.offset ? 0 : 1;
+    if (p_inst->seq.state == SEQ_STATE_MODE_SEL) {
+        struct Sequencer_SM_Evt seq_evt = {
+            .sig = k_Seq_SM_Evt_Sig_Button_Pressed,
+            .data.pressed.btn_id = p_evt->data.pressed.btn_id
+        };
 
-    struct LED_Driver_SM_Evt led_evt = {
-        .sig = k_LED_Driver_SM_Evt_Change_Default_Levels,
-        .data.def_lvl.btn_id = p_evt->data.pressed.btn_id,
-        .data.def_lvl.offset = p_inst->seq.offset,
-        .data.def_lvl.armed = p_inst->seq.active[p_evt->data.pressed.btn_id],
-        .data.def_lvl.step = p_inst->seq.step[ch],
-        .data.def_lvl.edge = p_inst->seq.edge[ch]
-    };
+        k_msgq_put(&sequencer_sm_evt_q, &seq_evt, K_NO_WAIT);
 
-    k_msgq_put(&led_driver_sm_evt_q, &led_evt, K_NO_WAIT);
+    } else {
+        // calculate the channel which we can do by checking if the button value is less than the offset. If it is less than it is 0, otherwise 1. 
+        int ch = p_evt->data.pressed.btn_id < p_inst->seq.offset ? 0 : 1;
+        
+        if (p_inst->seq.shift){
+            int temp = p_evt->data.pressed.btn_id + 1  - (ch * p_inst->seq.offset);
+            if (temp <=0) {
+                p_inst->seq.maxStep[ch] = 1;
+            } else {
+                p_inst->seq.maxStep[ch] = temp;
+            }
+            LOG_INF("Max Step: %d", p_inst->seq.maxStep[ch]); 
+            
+        } else {
+            // Toggle the active state of the button in the sequencer instance
+            p_inst->seq.active[p_evt->data.pressed.btn_id] = !p_inst->seq.active[p_evt->data.pressed.btn_id];
+            
+            struct LED_Driver_SM_Evt led_evt = {
+                .sig = k_LED_Driver_SM_Evt_Change_Default_Levels,
+                .data.def_lvl.btn_id = p_evt->data.pressed.btn_id,
+                .data.def_lvl.offset = p_inst->seq.offset,
+                .data.def_lvl.armed = p_inst->seq.active[p_evt->data.pressed.btn_id],
+                .data.def_lvl.step = p_inst->seq.step[ch],
+                .data.def_lvl.edge = p_inst->seq.edge[ch]
+            };
 
+            k_msgq_put(&led_driver_sm_evt_q, &led_evt, K_NO_WAIT);
+        }
+    }
 }
 
 

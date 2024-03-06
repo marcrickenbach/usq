@@ -68,7 +68,7 @@
 #define TRANSPORT_PINS      DT_PATH(zephyr_user)
 
 // Delay Coefficient for Testing
-#define TEST_DELAY_TIME         10
+#define TEST_DELAY_TIME     10
 
 #define GPIO_PINS           DT_PATH(zephyr_user)
 
@@ -87,7 +87,8 @@
 
 #define LED_STEP            2
 
-
+#define MODE_SEL_LED_INTERVAL   200
+#define MODE_SEL_BTN_PRESS_TIME 200
 
 /* *****************************************************************************
  * Debugging
@@ -600,7 +601,7 @@ static void config_initial_voltages(struct Sequencer_Instance * p_inst)
 
     for (int i = 0; i < ARRAY_SIZE(p_inst->seq.voltage); ++i)
     {
-        p_inst->seq.voltage[i] = 0; //+ (i * 500);
+        p_inst->seq.voltage[i] = 0;
     }
 
     for (int k=1; k < 3; k++) 
@@ -622,7 +623,7 @@ static void config_initial_time_delays(struct Sequencer_Instance * p_inst)
 static void config_initial_sequencer_values(struct Sequencer_Instance * p_inst)
 {
     config_initial_voltages(p_inst); 
-    config_initial_time_delays(p_inst);
+    // config_initial_time_delays(p_inst);
 
     p_inst->seq.maxStep[0] = 8; 
     p_inst->seq.maxStep[1] = 8; 
@@ -836,8 +837,15 @@ int randInRange(int min, int max) {
     return min + (rand() % (max - min + 1));
 }
 
+/* Forward Declaration*/
+static void cancel_btn_timer(struct Sequencer_Instance * p_inst); 
+
 static void post_updated_pot_value(struct Sequencer_Instance * p_inst, enum Pot_Id id, uint16_t val) 
 {
+    bool *shift = &p_inst->seq.shift;
+    bool *slew = &p_inst->seq.slew;
+    uint16_t *global = &p_inst->seq.global;
+
     if (id < 16) {
         p_inst->seq.voltage[id] = val; 
     } else if (id >= 16 && id < 32) {
@@ -851,8 +859,17 @@ static void post_updated_pot_value(struct Sequencer_Instance * p_inst, enum Pot_
                 p_inst->seq.param[ id - 32 ] = (float)(seq_param); 
                 break; 
             case 34:
-                int global_val = map_val(val, 0, 4095, 0, 100);
-                p_inst->seq.global = global_val; 
+                if (shift) {
+                    /* if we detect user is holding down shift button, change our slew values */
+                    int slew_val = map_val(val, 0, 4095, 0, 100);
+                    *slew = slew_val;
+                    /* TODO: If we detect a change here, we should probably stop our long hold timer, assuming the user is using the mode btn as a shift rather than to switch mode. */
+                    cancel_btn_timer(p_inst);
+                } else {
+                    int global_val = map_val(val, 0, 4095, 0, 100);
+                    *global = global_val; 
+                }
+
                 break; 
         }
     }
@@ -879,8 +896,7 @@ static void check_current_step(struct Sequencer_Instance * p_inst, enum Pot_Id i
             return;
             break;
         case 34:
-            /* Some parameter, not quite sure what it does yet, 
-            might be clock divider. Only time will tell. */
+            /* Random / Slew Check to see if we dealt with a Random or Slew Change*/
             return; 
             break; 
         default:  // default handles all time and voltage pots
@@ -936,23 +952,31 @@ static void set_gate_on_step(struct Sequencer_Instance * p_inst, enum Sequencer_
 }
 
 
-static void advance_sequencer_step(struct Sequencer_Instance *p_inst, enum Sequencer_Id id) {
-
+static void advance_sequencer_step(struct Sequencer_Instance *p_inst, enum Sequencer_Id id) 
+{
     if (p_inst->seq.maxStep[id] == 0) return;
 
+    int newStep;
+
     if (p_inst->seq.global > 5 && randInRange(0, 100) < p_inst->seq.global) {
-        p_inst->seq.step[id] = randInRange(0, p_inst->seq.maxStep[id] - 1);
+        newStep = randInRange(0, p_inst->seq.maxStep[id] - 1);
     } else {
-        p_inst->seq.step[id] = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
+        if (p_inst->seq.direction[id] == 0) {
+            newStep = (p_inst->seq.step[id] + 1) % p_inst->seq.maxStep[id];
+        } else {
+            newStep = (p_inst->seq.step[id] - 1 + p_inst->seq.maxStep[id]) % p_inst->seq.maxStep[id];
+        }
     }
+    p_inst->seq.step[id] = newStep;
 }
+
+
 
 
 
 /* *******************
  * Transport Buttons
  * *******************/
-
 
 enum Sequencer_Ctrl_Id {
     PLAY_PAUSE_A,
@@ -963,6 +987,13 @@ enum Sequencer_Ctrl_Id {
     CTRL_BTN_LAST
 };
 
+enum Sequencer_State_Id {
+    SEQ_STATE_NORMAL,
+    SEQ_STATE_MAX_SEL,
+    SEQ_STATE_MODE_SEL,
+    SEQ_STATE_DOUBLE_CLICK,
+    SEQ_STATE_LAST
+};
 
 struct ButtonDefinition {
     const struct device *port;
@@ -977,7 +1008,6 @@ const struct ButtonDefinition button_definition[5] = {
     { .port = mode_btn.port, .pin = mode_btn.pin }
 };
 
-
 static int debounce (enum Sequencer_Ctrl_Id id) {
     static uint8_t switch_state[CTRL_BTN_LAST] = {0}; 
     switch_state[id] = (switch_state[id] << 1) | !gpio_pin_get(button_definition[id].port, button_definition[id].pin);
@@ -987,24 +1017,124 @@ static int debounce (enum Sequencer_Ctrl_Id id) {
     }
 }
 
-/* FIXME: move as much out of ISRs */
+
+static uint16_t mode_btn_state_counter = 0;
+
+static int mode_idx = 0;
+
+
+/* Helper Functions*/
+
+static void set_seq_state(struct Sequencer_Instance * p_inst, enum Sequencer_State_Id state)
+{
+    p_inst->seq.state = state;
+}
+
+static void turn_on_led(struct gpio_dt_spec * led)
+{
+    gpio_pin_set(led->port, led->pin, 1);
+}
+
+static void turn_off_led(struct gpio_dt_spec * led)
+{
+    gpio_pin_set(led->port, led->pin, 0);
+}
+
+static void toggle_led(struct gpio_dt_spec * led, bool state)
+{
+    gpio_pin_set(led->port, led->pin, state);
+}
+
+static void cancel_btn_timer(struct Sequencer_Instance * p_inst)
+{
+    k_timer_stop(&p_inst->timer.mode_btn);
+}
+
+
+static void mode_btn_timer_expiry(struct k_timer * p_timer)
+{
+    struct Sequencer_Instance * p_inst =
+        CONTAINER_OF(p_timer, struct Sequencer_Instance, timer.mode_btn);
+
+    int st = gpio_pin_get(reset_a.port, reset_a.pin);
+
+    if (st) {
+        mode_btn_state_counter |= (1 << mode_idx);
+        mode_idx++;
+    }
+
+    if (mode_idx == 10 && mode_btn_state_counter == 0x3FF) {
+        LOG_INF("MODE SELECT STATE\n");
+        set_seq_state(p_inst, SEQ_STATE_MODE_SEL);
+        k_timer_start(&p_inst->timer.mode_led, K_NO_WAIT, K_MSEC(MODE_SEL_LED_INTERVAL));
+        mode_idx = mode_btn_state_counter = 0;
+
+        struct Sequencer_SM_Evt evt = {
+            .sig = k_Seq_SM_Evt_Sig_Mode_Select_State
+        };
+
+        q_sm_event(p_inst, &evt);
+        p_inst->seq.shift = false;
+        LOG_INF("SHIFT STATE: %d\n", p_inst->seq.shift);
+    } else if (mode_btn_state_counter > 0x01 && mode_btn_state_counter < 0xFF) {
+        p_inst->seq.shift = true;
+        LOG_INF("SHIFT STATE: %d\n", p_inst->seq.shift);
+        bool btn_state = gpio_pin_get(reset_a.port, reset_a.pin);
+        toggle_led(&mode_led, btn_state);
+    }
+}
+
+static void mode_led_timer_expiry(struct k_timer * p_timer)
+{
+    struct Sequencer_Instance * p_inst =
+        CONTAINER_OF(p_timer, struct Sequencer_Instance, timer.mode_led);
+
+    cancel_btn_timer(p_inst);
+    static bool state = false; 
+    state = !state;
+    gpio_pin_set(mode_led.port, mode_led.pin, state);
+
+}
+
+static void init_mode_btn_timer(struct Sequencer_Instance * p_inst)
+{
+    #define ON_MODE_BTN_TIMER_EXPIRY  mode_btn_timer_expiry
+    #define ON_MODE_BTN_TIMER_STOPPED NULL
+    k_timer_init(&p_inst->timer.mode_btn, ON_MODE_BTN_TIMER_EXPIRY,
+            ON_MODE_BTN_TIMER_STOPPED);
+}
+
+static void init_mode_led_timer(struct Sequencer_Instance * p_inst)
+{
+    #define ON_MODE_LED_TIMER_EXPIRY  mode_led_timer_expiry
+    #define ON_MODE_LED_TIMER_STOPPED NULL
+    k_timer_init(&p_inst->timer.mode_led, ON_MODE_LED_TIMER_EXPIRY,
+            ON_MODE_LED_TIMER_STOPPED);
+}
+
+
+
+
 static void on_transport_a(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
     struct Sequencer_Instance *p_inst = CONTAINER_OF(cb, struct Sequencer_Instance, transport_gpio_1_cb);
-
     static bool status = false;
     bool pressed = debounce(PLAY_PAUSE_A);
 
     if (pressed){
-        status = !status;
-        gpio_pin_set(play_led_high.port, play_led_high.pin, status);
-
-        if (p_inst->seq.running[0]) {
-            counter_stop(p_inst->timer.t[0]);
+        if (p_inst->seq.shift) {
+            p_inst->seq.direction[0] = !p_inst->seq.direction[0];
         } else {
-            counter_start(p_inst->timer.t[0]);
+            status = !status;
+            gpio_pin_set(play_led_high.port, play_led_high.pin, status);
+
+            if (p_inst->seq.running[0]) {
+                counter_stop(p_inst->timer.t[0]);
+            } else {
+                counter_start(p_inst->timer.t[0]);
+            }
+            p_inst->seq.running[0] = !p_inst->seq.running[0];
         }
-        p_inst->seq.running[0] = !p_inst->seq.running[0];
     }
 }
  
@@ -1012,46 +1142,122 @@ static void on_transport_a(const struct device *dev, struct gpio_callback *cb, u
 static void on_transport_b(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
     struct Sequencer_Instance *p_inst = CONTAINER_OF(cb, struct Sequencer_Instance, transport_gpio_2_cb);
-
     static bool status = false;
     bool pressed = debounce(PLAY_PAUSE_B);
 
     if (pressed){
-        status = !status;
-        gpio_pin_set(play_led_low.port, play_led_low.pin, status);
-
-        if (p_inst->seq.running[1]) {
-            counter_stop(p_inst->timer.t[1]);
+        if (p_inst->seq.shift) {
+            p_inst->seq.direction[1] = !p_inst->seq.direction[1];
         } else {
-            counter_start(p_inst->timer.t[1]);
+            status = !status;
+            gpio_pin_set(play_led_low.port, play_led_low.pin, status);
+
+            if (p_inst->seq.running[1]) {
+                counter_stop(p_inst->timer.t[1]);
+            } else {
+                counter_start(p_inst->timer.t[1]);
+            }
+            p_inst->seq.running[1] = !p_inst->seq.running[1];
         }
-        p_inst->seq.running[1] = !p_inst->seq.running[1];
     }
 }
 
+
 static void on_reset_a(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
+    /******************************************************************************/
+    /* KEEP this is original button, we are using the reset button only for dev purposes in order to write for the mode button which isn't wired correctly on this prototype. Uncomment below once new board arrives. */
+
+    // struct Sequencer_Instance * p_inst = CONTAINER_OF(cb, struct Sequencer_Instance, transport_gpio_1_rst_cb);
+    // bool pressed = debounce(RESET_A);
+
+    // if (pressed){
+    //      if (p_inst->seq.shift) {
+    //         /* if short press detected we change direction */
+    //         p_inst->seq.random[0] = !p_inst->seq.random[0];
+
+    //      } else {
+    //         gpio_pin_set(reset_led_high.port, reset_led_high.pin, 1);
+    //         turn_on_led(&reset_led_high);
+    //         p_inst->seq.step[0] = 0;
+    //         p_inst->seq.edge[0] = false;
+
+    //         struct Sequencer_Evt evt = {
+    //             .sig = k_Seq_Evt_Sig_Reset_LED,
+    //             .data.reset.channel = 0,
+    //             .data.reset.offset = p_inst->seq.offset,
+    //             .data.reset.step = p_inst->seq.step[0],
+    //             .data.reset.val = EIGHTH_BRIGHTNESS
+    //         };
+
+    //         broadcast_event_to_listeners(p_inst, &evt);
+    //     }
+    // }
+
+    // bool btn_state = gpio_pin_get(reset_a.port, reset_a.pin);
+    // gpio_pin_set(reset_led_high.port, reset_led_high.pin, btn_state);
+
+    /******************************************************************************/
+
     struct Sequencer_Instance * p_inst = CONTAINER_OF(cb, struct Sequencer_Instance, transport_gpio_1_rst_cb);
+    enum Sequencer_State_Id state = p_inst->seq.state;
+    bool btn_state; 
     bool pressed = debounce(RESET_A);
+    static uint32_t press_time = 0; 
+    static uint32_t last_time = 0;
 
     if (pressed){
-        gpio_pin_set(reset_led_high.port, reset_led_high.pin, 1);
-        p_inst->seq.step[0] = 0;
-        p_inst->seq.edge[0] = false;
+        switch(state) {
+            default: break;
+
+            case SEQ_STATE_NORMAL: 
+
+                // press_time = k_uptime_get_32();
+                
+                /* Start timer to check for a long press (5 seconds). Timer fires callback every 500ms. When we reach 5 seconds we switch mode states. */
+                k_timer_start(&p_inst->timer.mode_btn, K_NO_WAIT, K_MSEC(MODE_SEL_BTN_PRESS_TIME));
+                
+                /* In the meantime, check for a short double press. If we detect one, we cancel our long hold timer and switcch states. */
+                // if (press_time - last_time >= 100 && press_time - last_time <= 800) {
+                //     set_seq_state(p_inst, SEQ_STATE_DOUBLE_CLICK);
+                //     cancel_btn_timer(p_inst);
+                // }
+                
+                // last_time = press_time;
+
+                break;
+
+            case SEQ_STATE_MAX_SEL:
+                LOG_INF("MAX SELECT STATE\n");
+                set_seq_state(p_inst, SEQ_STATE_MODE_SEL);
+                // turn_on_led(&reset_led_high);
+                break;
+
+            case SEQ_STATE_MODE_SEL:
+                LOG_INF("NORMAL STATE\n"); 
+                set_seq_state(p_inst, SEQ_STATE_NORMAL);
+
+                /* TODO: Need to update our LED to current step so that 
+                we don't have to wait for a step to be over after we 
+                come out of mode select state */
+                cancel_btn_timer(p_inst);
+                k_timer_stop(&p_inst->timer.mode_led);
+                turn_off_led(&reset_led_high);
+                break;
+
+            case SEQ_STATE_DOUBLE_CLICK:
+                LOG_INF("DOUBLE CLICK STATE\n");
+                break;
+        }
+    } else {
+
+        mode_btn_state_counter = mode_idx = 0;
+        p_inst->seq.shift = false;
+
     }
 
-    struct Sequencer_Evt evt = {
-        .sig = k_Seq_Evt_Sig_Reset_LED,
-        .data.reset.channel = 0,
-        .data.reset.offset = p_inst->seq.offset,
-        .data.reset.step = p_inst->seq.step[0],
-        .data.reset.val = EIGHTH_BRIGHTNESS
-    };
-
-    broadcast_event_to_listeners(p_inst, &evt);
-
-    bool btn_state = gpio_pin_get(reset_a.port, reset_a.pin);
-    gpio_pin_set(reset_led_high.port, reset_led_high.pin, btn_state);
+    btn_state = gpio_pin_get(reset_a.port, reset_a.pin);
+    toggle_led(&mode_led, btn_state);
 }
 
 
@@ -1061,23 +1267,27 @@ static void on_reset_b(const struct device *dev, struct gpio_callback *cb, uint3
     bool pressed = debounce(RESET_B);
 
     if (pressed){
-        gpio_pin_set(reset_led_low.port, reset_led_low.pin, 1);
-        p_inst->seq.step[1] = 0;
-        p_inst->seq.edge[1] = false;
+         if (p_inst->seq.shift) {
+            p_inst->seq.random[1] = !p_inst->seq.random[1];
+         } else {
+            turn_on_led(&reset_led_low);
+            p_inst->seq.step[1] = 0;
+            p_inst->seq.edge[1] = false;
+
+            struct Sequencer_Evt evt = {
+                .sig = k_Seq_Evt_Sig_Reset_LED,
+                .data.reset.channel = 1,
+                .data.reset.offset = p_inst->seq.offset,
+                .data.reset.step = p_inst->seq.step[1],
+                .data.reset.val = EIGHTH_BRIGHTNESS
+            };
+
+            broadcast_event_to_listeners(p_inst, &evt);
+        }
     }
 
-    struct Sequencer_Evt evt = {
-        .sig = k_Seq_Evt_Sig_Reset_LED,
-        .data.reset.channel = 1,
-        .data.reset.offset = p_inst->seq.offset,
-        .data.reset.step = p_inst->seq.step[1],
-        .data.reset.val = EIGHTH_BRIGHTNESS
-    };
-
-    broadcast_event_to_listeners(p_inst, &evt);
-
     bool btn_state = gpio_pin_get(reset_b.port, reset_b.pin);
-    gpio_pin_set(reset_led_low.port, reset_led_low.pin, btn_state);
+    toggle_led(&reset_led_low, btn_state);
 }
 
 
@@ -1164,7 +1374,8 @@ static void state_init_run(void * o)
 
     time_t t; 
     srand(1114198411131987);
-
+    init_mode_btn_timer(p_inst);
+    init_mode_led_timer(p_inst);
     config_instance_deferred(p_inst, &p_ii->cfg);
     broadcast_instance_initialized(p_inst, p_ii->cfg.cb);  
     smf_set_state(SMF_CTX(p_sm), &states[run]);
@@ -1189,24 +1400,26 @@ static void state_run_run(void * o)
 
     switch(p_evt->sig){
         default: break;
+
         case k_Seq_SM_Evt_Sig_Init_Instance:
             /* Should never occur. */
             assert(false);
             break;
+
         case k_Seq_SM_Evt_Timer_Elapsed:
 
             struct Sequencer_SM_Evt_Sig_Timer_Elapsed * p_stepped = &p_evt->data.stepped; 
-            uint32_t new_tix; // changed from uint16
+            uint32_t new_tix;
             enum Sequencer_Id id = p_stepped->id;
 
             switch(p_stepped->edge) {
-
                 case LOW_EDGE:
-
                     uint8_t currentStep = p_inst->seq.step[id];
                     bool isActive = p_inst->seq.active[currentStep + id * p_inst->seq.offset];
 
-                    update_leds(id, currentStep, p_inst->seq.offset, EIGHTH_BRIGHTNESS, LED_STEP, NULL);
+                    if (p_inst->seq.state != SEQ_STATE_MODE_SEL) {
+                        update_leds(id, currentStep, p_inst->seq.offset, EIGHTH_BRIGHTNESS, LED_STEP, NULL);
+                    } 
                     
                     if (isActive) {
                         set_voltage_on_step(p_inst, id);
@@ -1214,39 +1427,52 @@ static void state_run_run(void * o)
                     }
 
                     p_inst->seq.edge[id] = HIGH_EDGE;
-                    
                     new_tix = calculate_gate_timer_delay(p_inst, id, HIGH_EDGE);
-                    
                     if (new_tix < 1) new_tix = 1;
-                    
                     reset_timer(p_inst, id, new_tix);
-                    
                 break;
 
                 case HIGH_EDGE:
-
                     advance_sequencer_step(p_inst, id);
                     set_gate_on_step(p_inst, id, false);
-                    
                     p_inst->seq.edge[id] = LOW_EDGE;
-                    
                     new_tix = calculate_gate_timer_delay(p_inst, id, LOW_EDGE);
-                    
                     if (new_tix < 1) new_tix = 1;
-                    
                     reset_timer(p_inst, id, new_tix);
                 break; 
             }
             break;
 
         case k_Seq_SM_Evt_Sig_Pot_Value_Changed:
+            
             struct Sequencer_SM_Evt_Sig_Pot_Value_Changed * p_pot_changed = &p_evt->data.pot_changed; 
             post_updated_pot_value(p_inst, p_pot_changed->pot_id, p_pot_changed->val);
             // check_current_step(p_inst, p_pot_changed->pot_id);
+            break;
+
+        case k_Seq_SM_Evt_Sig_Mode_Select_State:
+            
+            uint8_t *currentMode = &p_inst->seq.mode;
+            uint8_t offset = p_inst->seq.offset;
+            clear_leds();
+
+            if (*currentMode < 8) {
+                update_leds(0, *currentMode, offset, EIGHTH_BRIGHTNESS, LED_MODE, NULL);
+            } else {
+                update_leds(1, *currentMode, offset, EIGHTH_BRIGHTNESS, LED_MODE, NULL);
+            }
 
             break;
-        case k_Seq_SM_Evt_Sig_Button_Pressed:
 
+        case k_Seq_SM_Evt_Sig_Button_Pressed:
+            /* Change the Mode and update the LED*/
+            p_inst->seq.mode = p_evt->data.pressed.btn_id;
+            LOG_INF("MODE: %d\n", p_inst->seq.mode);
+
+            struct Sequencer_SM_Evt evt = {
+                .sig = k_Seq_SM_Evt_Sig_Mode_Select_State
+            };
+            q_sm_event(p_inst, &evt);
 
             break;
     }

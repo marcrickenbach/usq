@@ -4,14 +4,24 @@
 
 /* *****************************************************************************
  * TODO
- This module will handle MIDI messages to and from the USB port. 
 
- NOTE: The STM32F446RE has an internal pull-up resistor on the USB D+ line, therefore no external pull-up resistor is needed.
+    This module will handle MIDI messages to and from the USB port. 
+
+    * Explore implementing a MIDI class driver for USB, as well as CDC and DFU. 
+    * MIDI will be for sending note data to a host, and receiving control information from the host. 
+    * CDC will be for sending debug information to the device. This might be interesting for running live scripts or doing other live coding performances. 
+    * DFU will allow users to update firmware on the device.  
+
+    NOTE: The STM32F446RE has an internal pull-up resistor on the USB D+ line, therefore no external pull-up resistor is needed.
+
+
+    ISSUES: having trouble getting the USB device to initialize. First goal is to get the USB device to initialize and be recognized by the host.
+
  */
 
 /* *****************************************************************************
  * Includes
- */
+ */ 
 
 #include "usb.h"
 
@@ -23,13 +33,13 @@
 #include "usb/private/sm_evt.h"
 #include "usb/private/module_data.h"
 
+#include <zephyr/device.h>
+#include <zephyr/drivers/uart.h>
+
+#include <zephyr/sys/ring_buffer.h>
+
 #include <zephyr/usb/usb_device.h>
-#include <zephyr/sys/byteorder.h>
-#include <zephyr/usb/bos.h>
-#include <zephyr/usb/msos_desc.h>
-
-#include "webusb.h"
-
+#include <zephyr/usb/usbd.h>
 
 
 /* *****************************************************************************
@@ -396,18 +406,70 @@ static void q_init_instance_event(struct USB_Instance_Cfg * p_cfg)
  * USB INITS
  * **************/
 
+
+void usb_test_callback(enum usb_dc_status_code cb_status, const uint8_t *param) {
+    switch (cb_status) {
+    case USB_DC_CONNECTED:
+        LOG_INF("USB connected");
+        break;
+    case USB_DC_DISCONNECTED:
+        LOG_INF("USB disconnected");
+        break;
+    case USB_DC_ERROR:  
+        LOG_INF("USB error");
+        break;
+    default:
+        LOG_INF("USB unknown status");
+        break;
+    }
+};
+
+
+
+
+#define USB_NODE    DT_NODELABEL(usbotg_fs)
+const struct device *usb_dev = DEVICE_DT_GET(USB_NODE);
+#define RING_BUF_SIZE 1024
+uint8_t ring_buffer[RING_BUF_SIZE];
+    struct ring_buf ringbuf;
+
 static void init_usb_device(struct USB_Instance * p_inst)
 {
     /* Disable VBUS Sensing */
-    USB_OTG_FS->GCCFG &= ~(1U<<21);
-    
-    int ret = usb_enable(NULL);
+    // USB_OTG_FS->GCCFG &= ~(1U<<21);
+
+    const struct device *dev;
+	uint32_t baudrate, dtr = 0U;
+	int ret;
+
+
+	dev = DEVICE_DT_GET_ONE(zephyr_cdc_acm_uart);
+	if (!device_is_ready(dev)) {
+		LOG_ERR("CDC ACM device not ready");
+        return; 
+	}
+
+    ret = usb_enable(NULL);
     if(ret != 0) {
         LOG_ERR("Failed to enable USB device (err: %d)", ret);
         return; 
-    } else {
-        LOG_INF("USB device enabled");
     }
+
+    ring_buf_init(&ringbuf, sizeof(ring_buffer), ring_buffer);
+
+	LOG_INF("Wait for DTR");
+
+	while (true) {
+		uart_line_ctrl_get(dev, UART_LINE_CTRL_DTR, &dtr);
+		if (dtr) {
+			break;
+		} else {
+			/* Give CPU resources to low priority threads. */
+			k_sleep(K_MSEC(100));
+		}
+	}
+
+
 }
 
 

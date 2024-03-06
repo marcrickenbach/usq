@@ -38,7 +38,7 @@ enum Sequencer_SM_Evt_Sig{
     k_Seq_SM_Evt_Sig_Pot_Value_Changed,
     k_Seq_SM_Evt_Sig_UART_RX_Received,
     k_Seq_SM_Evt_Sig_Button_Pressed,
-    // Sequencer_SM_Evt_Sig_Button_Pressed,
+    k_Seq_SM_Evt_Sig_Mode_Select_State,
 
     k_Seq_SM_Evt_Sig_End,                           // Exclusive
     k_Seq_SM_Evt_Sig_Max = k_Seq_SM_Evt_Sig_End - 1,// Inclusive
@@ -89,7 +89,7 @@ struct Sequencer_SM_Evt{
         struct Sequencer_SM_Evt_Sig_Timer_Elapsed       stepped;
         struct Sequencer_SM_Evt_Sig_Pot_Value_Changed   pot_changed;
         struct Sequencer_SM_Evt_Sig_UART_RX_RECEIVED    midi_cmd; 
-        struct Sequencer_SM_Evt_Sig_Button_Pressed      btn_pressed;
+        struct Sequencer_SM_Evt_Sig_Button_Pressed      pressed;
 	}data;
 };
 

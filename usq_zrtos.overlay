@@ -133,7 +133,7 @@
     status = "okay"; 
     pinctrl-0 = <&spi2_mosi_pb15 &spi2_sck_pb13>;
     pinctrl-names = "default";
-    clock-frequency = <5625000>; //<1406250>;
+    clock-frequency = <5250000>; // 5.25 MHz
     label = "SPI2";
     dmas = <&dma1 4 0 0x20040 0x03>; /* DMA1 Stream4 Channel3 for TX */
     dma-names = "tx";
@@ -166,12 +166,17 @@
     status = "disabled";
 };
 
-
 &usbotg_fs {
-    compatible = "st,stm32-otgfs"; 
-    pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;
-    pinctrl-names = "default";
-    status = "okay"; 
+	pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>; //&usb_otg_fs_id_pa10
+	pinctrl-names = "default";
+	status = "okay";
+    cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+	};
+};
+
+&usbotg_hs {
+    status = "disabled";
 };
 
 &usart1 {

@@ -76,6 +76,8 @@ struct Sequencer_Instance{
     struct{
         const struct device *t[2]; 
         bool running[2];
+        struct k_timer mode_btn;
+        struct k_timer mode_led;
     }timer;
 
     struct {
@@ -94,14 +96,19 @@ struct Sequencer_Instance{
         bool active[16]; 
         uint16_t voltage[16];
         uint16_t time[16]; 
-        uint16_t param[2]; 
+        float param[2]; 
         uint16_t delay_buffer[2]; 
         bool edge[2]; 
-        uint16_t global; 
+        bool random[2];
+        bool direction[2]; 
+        bool running[2];
+        uint16_t global;
+        uint16_t slew; 
         uint8_t offset; 
         uint8_t mode; 
-        bool running[2];
-    }seq; 
+        uint8_t state; 
+        bool shift; 
+    }seq;
 
     counter_alarm_callback_t tim_cb[2];
 
